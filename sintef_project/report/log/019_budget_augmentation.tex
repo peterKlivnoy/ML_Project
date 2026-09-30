@@ -1,0 +1,67 @@
+\subsection{2026-09-22 --- Budget augmentation: +0.020 from the structural insight}
+\label{sec:budget}
+
+Section~\ref{sec:oracle} established that the entire gap from 0.83 to 0.98 lies in one number per
+unit-week, and that a naive reformulation replacing the pointwise model performed worse than it.
+This entry records three further attempts and the one that worked.
+
+\subsubsection*{Unit of analysis.}
+The count problem lives at \textbf{(case, unit)}: 40{,}908 rows, one per unit-week. This
+granularity resolves a limitation carried since Section~\ref{sec:feature-themes}: in the
+(case, hour) layout a static per-unit attribute is a constant column with zero information, so
+$p_{\max}$, $p_{\min}$, \texttt{startcost\_const}, \texttt{penstock} and merit rank were unusable.
+With \emph{unit} as a row dimension rather than a column dimension they become ordinary features
+that vary across rows. The class mix at this level is 27\% all-off, 41\% mixed, 32\% all-on.
+
+\subsubsection*{Three attempts.}
+
+\begin{center}
+\begin{tabular}{llr}
+\toprule
+Attempt & Form & micro-AUC (2022) \\
+\midrule
+1 & flat count regression, hard allocation      & 0.7801 \\
+2 & 3-class $+$ count regression, hard allocation & 0.8257 \\
+  & \emph{pointwise model, for reference}       & \emph{0.8347} \\
+3 & \textbf{pointwise $+$ budget offset (logit scale)} & \textbf{0.8548} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\finding{\textbf{Decomposing the count target helped, but replacing the pointwise model did not.}
+Splitting into all-off / mixed / all-on and regressing the count only on mixed unit-weeks cut count
+MAE from \textbf{43.6h to 34.6h} and lifted the allocation score from 0.7801 to 0.8257. Both
+remain below the pointwise model, because hard allocation turns a count error into a step function
+that ranks badly, whereas the pointwise model degrades smoothly.}
+
+\finding{\textbf{Used as an \emph{augmentation} rather than a replacement, the same information is
+worth $+0.020$.} Adding $\lambda \cdot (\widehat{\text{count}} - \text{spread rank})/168$ to the
+pointwise model's logits gives 0.8548 against a 0.8347 baseline. The pointwise model ranks hours
+well within a week but has no representation of \emph{how many} hours a unit should run; the
+budget margin supplies exactly that, while the logit form preserves the existing ranking instead
+of overriding it.}
+
+\finding{\textbf{The blend weight transfers across years, unlike the stage-2 gate.} $\lambda$
+selected on 2021 (=4) yields $+0.0200$ on 2022, against $+0.0240$ for the 2022-optimal
+$\lambda{=}8$ --- only 0.004 lost to honest selection. Both years show the same broad shape (rise,
+flat peak in the 4--8 range, decline), so the choice is insensitive. This contrasts with the
+per-unit stacking gate in Section~\ref{sec:stacked}, which was coin-flip across years and therefore
+unusable.}
+
+\subsubsection*{A methodological error, caught by a sanity check.}
+The first blend attempt rank-normalised each unit's predictions independently before combining.
+The sweep included $\lambda{=}0$, which must by construction reproduce the pointwise baseline; it
+returned 0.7872 against 0.8347, exposing the error. \textbf{Micro-averaged AUC pools every
+(row, unit) cell into a single ranking, so per-column rank transforms destroy the cross-unit
+calibration} the metric depends on --- the information that Vesle\_Kjela is almost always on while
+Vinje\_G3 is usually off. Blending must happen on the logit scale. Recorded because the invalid
+version looked entirely reasonable and produced plausible numbers; only the fixed point in the
+sweep revealed it.
+
+\subsubsection*{Remaining headroom.}
+Count MAE is 34.6h against a target mean of 87h, and the oracle ceiling is 0.9765. The augmented
+model captures $+0.020$ of the $+0.142$ available, so the count model is still the binding
+constraint. The 2022 confusion matrix also shows a distribution-shift problem: all-on unit-weeks
+are 32\% of training but only 9\% of 2022 (the price-crisis year, Section~\ref{sec:eda-round-2}
+finding 9), and only 176 of 474 are recovered. A count model robust to that shift --- or trained
+with recency weighting --- is the obvious next target.

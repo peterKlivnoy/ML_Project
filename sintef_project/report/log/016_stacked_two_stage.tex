@@ -1,0 +1,119 @@
+\subsection{2026-09-22 --- Two-stage model: per-unit residual correction}
+\label{sec:stacked}
+
+\subsubsection*{What prompted it.}
+Section~\ref{sec:pruning} reported that 15 features matched 299. That headline was true in
+aggregate and misleading in detail. Breaking the pruned model down per unit on 2022:
+
+\begin{center}
+\begin{tabular}{lrrr}
+\toprule
+Unit & Top-15 & All 299 & $\Delta$ \\
+\midrule
+Lio\_G1     & 0.718 & 0.827 & $\mathbf{-0.109}$ \\
+Hogga\_G1   & 0.742 & 0.839 & $\mathbf{-0.098}$ \\
+Haukeli\_G1 & 0.628 & 0.680 & $-0.052$ \\
+Kjela\_G1   & 0.907 & 0.949 & $-0.042$ \\
+Tokke\_G1--G4 & $\approx$0.77 & $\approx$0.77 & $+0.01$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\finding{Global gain ranking is biased against unit-specific features twice over: the gain is
+aggregated across all 14 outputs, and the multi-output tree forces every split to be shared, so a
+feature mattering intensely to one unit is penalised by the other thirteen. \textbf{Hogga, Lio and
+Tokke had \emph{zero} plant-specific features among the selected 15.} The micro-average concealed
+the damage because Tokke's four units carry 4/14 of the weight and improved slightly.}
+
+\subsubsection*{Architecture.} \texttt{src/modeling/stacked.py}.
+\begin{itemize}\itemsep1pt
+  \item \textbf{Stage 1} --- the joint multi-output tree on the shared pruned features, which is
+        what it is good at (cross-unit structure was worth $+0.04$, Section~\ref{sec:multioutput}).
+  \item \textbf{Stage 2} --- one small model per unit (depth 4, lr 0.05), receiving: its own
+        stage-1 prediction as \texttt{base\_margin}; the other 13 units' predictions as features;
+        and that unit's own hydraulic-neighbourhood features.
+\end{itemize}
+
+Using the own prediction as \texttt{base\_margin} rather than as an input column matters: as a
+feature the tree would have to reconstruct a monotone relationship through splits, whereas as a
+margin it is an exact logit offset and stage 2 fits only the \emph{residual correction}.
+
+\finding{\textbf{Stage 2 must train on out-of-fold stage-1 predictions.} Fitted in sample, stage-1
+predictions are near-perfect, stage 2 learns to trust the margin completely, contributes nothing,
+and looks fine in training while failing at inference. Cross-fitting by case (3 folds) is what
+prevents this, and it is why the run costs four multi-output fits rather than one.}
+
+\finding{\textbf{The two constraint files finally contribute.} \texttt{Constraint\_min\_volume}
+and \texttt{Constraint\_min\_flow} had produced zero features through fifteen builders, because as
+global columns they are near-constant (Section~\ref{sec:eda-round-2}, finding 11). Wired per plant
+through the topology graph they become genuinely unit-specific: Lio and Byrte receive Byrtevatn's
+minimum-volume constraint, Vinje and Songa receive Totak's, each plant its own connected rivers.
+Nine constraint columns now enter, but only into the stage-2 models of the units they touch.}
+
+\subsubsection*{Results (validation year 2022).}
+
+\begin{center}
+\begin{tabular}{lrrr}
+\toprule
+Unit & Stage 1 & Stacked & $\Delta$ \\
+\midrule
+\textbf{Lio\_G1}    & 0.724 & 0.861 & $\mathbf{+0.137}$ \\
+\textbf{Hogga\_G1}  & 0.737 & 0.813 & $\mathbf{+0.077}$ \\
+Tokke\_G1           & 0.779 & 0.816 & $+0.037$ \\
+Tokke\_G2/G3/G4, Haukeli & & & $+0.002 \ldots +0.012$ \\
+Vinje\_G1/G2, Byrte, Songa, Kjela & & & $-0.008 \ldots -0.022$ \\
+Vesle\_Kjela\_G1    & 0.964 & 0.921 & $-0.043$ \\
+Vinje\_G3           & 0.824 & 0.765 & $-0.059$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\finding{\textbf{The hypothesis is confirmed for the units it targeted.} Lio\_G1 recovers
+$+0.137$ and Hogga\_G1 $+0.077$ --- the two units pruning had cost roughly $0.10$ each. Unit-specific
+neighbourhood features carry real signal that pooled selection discards.}
+
+\finding{\textbf{But stage 2 harms units where stage 1 was already strong.} Every loss is
+concentrated among the best-served units: Vesle\_Kjela (stage-1 0.964), Byrte (0.947), Songa
+(0.934), Vinje\_G3 (0.824). A residual model on a near-optimal base can only add variance. Applied
+uniformly the architecture is roughly a wash: 7 of 14 units improve.}
+
+\subsubsection*{Corrected like-for-like result, and a reporting error.}
+The first run printed ``stage-1 0.8083'' against ``stacked 0.8391'' as though comparable. The
+former was a \emph{macro} mean of per-unit AUCs, the latter a \emph{micro}-average. Recomputed on
+the same metric:
+
+\begin{center}
+\begin{tabular}{lr}
+\toprule
+Model (validation 2022) & micro-AUC \\
+\midrule
+Stage 1 alone (joint, 15 features) & 0.8390 \\
+Stacked, all 14 units              & 0.8391 \\
+Selective stacking, gated on 2021  & 0.8432 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\finding{\textbf{Uniform stacking gains $+0.0001$ --- nothing.} The apparent $+0.03$ was entirely
+an artefact of comparing a macro mean against a micro average. The large per-unit gains
+(Lio $+0.137$, Hogga $+0.077$) and the losses on well-served units cancel almost exactly once
+pooled. The per-unit findings stand; the aggregate claim does not.}
+
+\finding{\textbf{The per-unit gate does not transfer between years.} Selecting stage-2 inclusion on
+2021 chose 8 units; only \textbf{4 of those 8} actually improved on 2022, and two of them
+(Vesle\_Kjela, Vinje\_G2) lost. The gate is roughly coin-flip accurate. It still nets $+0.0042$,
+but that is inside fold noise (fold SD $\approx$0.016--0.03), and the selection mechanism it
+depends on is demonstrably unstable. ``Which units need stage 2'' cannot be learned from one
+year's validation.}
+
+\subsubsection*{Where this leaves the architecture.}
+The gain is real but concentrated entirely in units where stage 1 is weak, so the useful form is
+not ``stack everything, then gate''. It is asymmetric \emph{by construction}: strong units get no
+stage-2 model at all, weak units get the full neighbourhood. That decision can be made from
+\emph{stage-1 training} performance rather than from a validation year, which avoids the unstable
+gate altogether.
+
+\subsubsection*{Open structural issue.} Stage 2 currently receives the same neighbourhood
+regardless of need --- Songa gets 6 columns, Kjela 49, with no relation to how much stage 1 is
+struggling on that unit. A per-unit feature budget scaled to stage-1 weakness (tight regularisation
+or no stage 2 at all for strong units, full neighbourhood for weak ones) is the natural next form.

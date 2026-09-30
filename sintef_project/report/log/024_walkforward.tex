@@ -1,0 +1,54 @@
+\subsection{2026-09-22 --- Walk-forward validation: six half-year folds}
+\label{sec:walkforward}
+
+Every result so far has rested on one or two validation years. This entry tests the full
+architecture across six consecutive six-month periods, each trained on all data preceding it, with
+$\lambda$ \textbf{fixed at 16 in advance} rather than tuned per fold --- which is what a real
+submission must do, and which avoids the optimistic bias of choosing $\lambda$ on the data being
+measured (Section~\ref{sec:budget}).
+
+\begin{table}[htbp]
+  \centering
+  \caption{Walk-forward validation. Leaderboard track (uses post-decision storage).}
+  \label{tab:walkforward}
+  \begin{tabular}{lrrrrr}
+    \toprule
+    Period & Train cases & Pointwise & $+$ budget & $\Delta$ & Count MAE \\
+    \midrule
+    2020-H1 & 1{,}826 & 0.8123 & 0.8831 & $+0.0709$ & 31.5h \\
+    2020-H2 & 2{,}008 & 0.8360 & 0.8960 & $+0.0599$ & 27.5h \\
+    2021-H1 & 2{,}192 & 0.8024 & 0.9095 & $+0.1070$ & 25.5h \\
+    2021-H2 & 2{,}373 & 0.7861 & 0.8959 & $+0.1098$ & 25.2h \\
+    2022-H1 & 2{,}557 & 0.7740 & 0.8889 & $+0.1149$ & 24.6h \\
+    2022-H2 & 2{,}738 & 0.8867 & 0.9408 & $+0.0541$ & 18.8h \\
+    \midrule
+    \textbf{Mean} & & \textbf{0.8163} & \textbf{0.9024} & $\mathbf{+0.0861}$ & 25.5h \\
+    \textbf{SD}   & & 0.0406 & \textbf{0.0208} & $0.0275$ & \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\finding{\textbf{The budget augmentation improves all six folds at a single fixed $\lambda$},
+by $+0.054$ to $+0.115$. This is the first result in the project validated across more than two
+periods without per-fold tuning, and the sign pattern is unanimous.}
+
+\finding{\textbf{The augmented model is more stable, not merely better.} Fold SD halves from
+0.0406 to 0.0208. The pointwise model swings across 0.774--0.887 between periods; the augmented
+model stays within 0.883--0.941. The budget term anchors exactly the predictions the pointwise
+model gets wrong in regime-specific ways --- consistent with Section~\ref{sec:robustness}, where
+the pointwise model scored identically on the two most dissimilar regimes while the count model
+was the regime-sensitive component.}
+
+\finding{\textbf{Count MAE improves monotonically with training data}, 31.5h to 18.8h as cases
+grow from 1{,}826 to 2{,}738. The count model is not saturated, which is encouraging for the test
+set, where it will train on all 2{,}922 labelled cases.}
+
+\finding{\textbf{Realistic test expectation is $\approx$0.90, not 0.917.} The 0.9168 reported in
+Section~\ref{sec:unitrel} came from full-year 2021 with $\lambda$ effectively selected on that
+data. The walk-forward mean of \textbf{0.9024 $\pm$ 0.0208} at fixed $\lambda$ is the honest
+estimate, and is the figure that should be carried into any submission decision.}
+
+\subsubsection*{Caveat.} Training sets grow across folds (1{,}826 to 2{,}738 cases), so part of
+the trend across periods reflects sample size rather than regime. The folds are realistic --- each
+uses what would actually have been available at that point --- but are not strictly comparable to
+one another.

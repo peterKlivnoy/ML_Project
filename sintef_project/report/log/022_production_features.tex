@@ -1,0 +1,95 @@
+\subsection{2026-09-22 --- Water-balance features: 0.835 to 0.912}
+\label{sec:production}
+
+Section~\ref{sec:countfeat} found that the strongest count feature was an accidental,
+system-level water balance. This entry builds the attributed version:
+\texttt{src/production\_features.py}, 149 features, evaluated on \textbf{2021} (the test-like
+year).
+
+\subsubsection*{Construction.} Organised around the constraint SHOP actually resolves,
+$\text{count} \approx \min(\text{hours the water pays for}, \text{hours the price justifies})$.
+
+\begin{itemize}\itemsep1pt
+  \item \textbf{Cascade-attributed balance}: $\text{release} = (\text{storage}_{\text{start}} -
+        \text{storage}_{\text{end}}) + \text{inflow} + \text{upstream plant discharge}$. The last
+        term is what the naive attempt in Section~\ref{sec:pruning} omitted, and it is what matters
+        for cascaded reservoirs such as Vinjevatn, which receives Vinje and Haukeli's output before
+        Tokke draws on it.
+  \item \textbf{Release converted to a direct count estimate} via the head chain (storage $\to$
+        \texttt{vol\_head} $\to$ level $\to$ minus \texttt{outlet\_line} $\to$ efficiency curve):
+        \texttt{implied\_hours} $=$ energy $/$ plant capacity.
+  \item \textbf{Both limits and which binds}: \texttt{hours\_water}, \texttt{hours\_profitable},
+        their minimum, their ratio, and a binary for which is binding.
+  \item \textbf{Normalisations throughout}: release/\texttt{max\_vol}, release/inflow, storage
+        fraction at start and end, capacity factor --- scale-free across reservoirs spanning
+        0.26 to 640\,Mm\textsuperscript{3}.
+\end{itemize}
+
+\subsubsection*{Result.}
+
+\begin{center}
+\begin{tabular}{lrrrr}
+\toprule
+Count features & MAE & 3-class acc & Blended score & $\Delta$ vs.\ pointwise \\
+\midrule
+Multi-horizon (244)            & 43.2h & 0.641 & 0.8561 & $+0.0216$ \\
+\textbf{$+$ production (393)}  & \textbf{26.6h} & \textbf{0.724} & \textbf{0.9123} & $\mathbf{+0.0777}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\finding{\textbf{0.8346 to 0.9123 on the test-like year}, with count MAE falling 43.2h to 26.6h
+($-38\%$). The largest single jump of the project, and it comes from features that encode the
+optimizer's own physics rather than statistical transforms of the inputs.}
+
+\finding{\textbf{The binding-constraint framing outperforms the raw water balance.}
+\texttt{binding\_min\_Haukeli} --- $\min(\text{hours\_water}, \text{hours\_profitable})$ --- is the
+top feature by a factor of three. Binding-constraint terms hold \textbf{20.8\%} of count-model
+gain against \textbf{16.1\%} for release/drawdown terms directly. Encoding \emph{how the optimizer
+decides} beats encoding \emph{what the water permits}.}
+
+\finding{\textbf{Individually weak, jointly strong.} \texttt{implied\_hours} correlates only
+$+0.06$ to $+0.28$ with the actual count per plant, yet the family is worth $+0.056$ on the final
+score. Another instance of the pattern established in Section~\ref{sec:feature-iter-1}: univariate
+correlation is a poor guide to feature value.}
+
+\subsubsection*{Ablation: the gain is post-decision information, not forecasting.}
+These features use storage at case \emph{end}, which is a \emph{consequence} of the decisions being
+predicted --- reservoirs draw down as units generate (Section~\ref{sec:state}). Splitting the
+feature set accordingly:
+
+\begin{center}
+\begin{tabular}{lrrr}
+\toprule
+Count features & MAE & Blended score & $\Delta$ vs.\ pointwise \\
+\midrule
+All (incl.\ post-decision)      & 28.4h & 0.9086 & $+0.0740$ \\
+\textbf{Causal only} (no end-of-week storage, no forward windows) & \textbf{43.3h} & \textbf{0.8548} & $\mathbf{+0.0202}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\finding{\textbf{Essentially the entire water-balance gain is post-decision information.} Removing
+end-of-week storage returns the score to 0.8548 --- indistinguishable from the 0.8561 achieved
+before these features existed (Section~\ref{sec:countfeat}). The causal contribution of the
+149-feature production module is approximately zero. The model is not forecasting commitment; it
+is reading commitment off the reservoir trace that commitment produced. \texttt{binding\_min}
+appeared to encode the optimizer's decision rule, but its power comes from \texttt{hours\_water},
+computed from the drawdown those decisions caused.}
+
+\finding{\textbf{It is legal and it will transfer.} The volume file runs to 2025-01-01 and the last
+test case requires storage at exactly 2025-01-01 (verified, Section~\ref{sec:eda-round-3b}). Only
+test \emph{targets} are withheld. A submission built this way should score near 0.91 on the hidden
+set, and this is the most plausible mechanism behind reported scores near 0.99.}
+
+\finding{\textbf{But it does not serve the stated purpose of the task.} The project brief frames
+the model as a way to \emph{speed up} hydropower scheduling by approximating the optimizer. A model
+requiring the post-solution reservoir trajectory as input cannot do that --- computing the feature
+presupposes the answer. The causal-only score of 0.8548 is the honest measure of how well we
+approximate SHOP from information available \emph{before} it solves; 0.9123 measures how well we
+can invert its physical footprint afterwards. Both are worth reporting, and they should never be
+quoted interchangeably.}
+
+\subsubsection*{Consequence for the project.} Two tracks should now be kept separate: a
+\emph{leaderboard} model, which may use post-decision state, and a \emph{causal} model, which is
+the one that answers the research question. Current standing: causal 0.8548, leaderboard 0.9123.

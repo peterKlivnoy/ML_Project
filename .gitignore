@@ -1,0 +1,8 @@
+# macOS / Python cruft
+.DS_Store
+__pycache__/
+*.pyc
+
+# Feature cache written by src/modeling/pipeline.py (114 MB, over GitHub's 100 MB limit).
+# Regenerated on demand by pipeline.build_features().
+sintef_project/data/processed/train_hourly_features.parquet

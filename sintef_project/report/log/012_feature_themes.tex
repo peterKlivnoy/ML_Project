@@ -1,0 +1,81 @@
+\subsection{2026-09-21 --- The 20 feature themes, and four unopened data sources}
+\label{sec:feature-themes}
+
+Before the iteration phase, the candidate space was organised into 20 agreed themes and populated
+with 5--9 concrete features each ($\sim$140 candidates). Full list:
+\texttt{report/feature\_backlog.md}.
+
+\subsubsection*{A bias in the first draft, and the coverage audit that fixed it.}
+The earlier backlog derived every theme from something the EDA had already measured --- which can
+only find signal where we have already looked, the opposite of breadth. Auditing the candidate
+themes against the \emph{data sources} rather than against our findings exposed an entire unused
+family: the physical and economic parameters in
+\texttt{Tokke\_Vinje\_topology.yaml}. \textbf{No column in the current 54-feature set references
+any physical attribute.} Four new themes came out of it, and two of them mechanically explain
+findings we had recorded as unexplained.
+
+\finding{\textbf{Start/stop costs exist in the data and were never opened.}
+\texttt{startcost\_const} and \texttt{stopcost\_const} are defined per generator (92 for Vesle
+Kjela up to 222 for Songa). Start cost is the central economic driver of unit commitment --- it is
+why units run in blocks rather than toggling hourly. Empirically, \textbf{start-cost-per-MW
+correlates $-0.673$ with observed toggling}: Haukeli\_G1 costs 29.2 per MW to start and switches
+0.49 times per week, while the Vinje units cost 1.98 per MW and switch 3.0--3.6 times. This is a
+direct mechanical explanation for the run-length differences reported in
+Section~\ref{sec:eda-round-2}, finding 5, from a static per-unit attribute that costs nothing to
+add.}
+
+\finding{\textbf{Penstock sharing explains Tokke's odd merit order.} Tokke's G1 and G2 share
+penstock 1; G3 and G4 share penstock 2. Vinje's three units each have their own. The merit order
+measured in Section~\ref{sec:eda-round-2} was G1 $\to$ G1+\textbf{G3} $\to$ then G4 or G2 --- which
+we noted as surprising because G2 is skipped. It is not arbitrary: the solver commits \emph{one
+unit per penstock before doubling up}, consistent with limiting the quadratic head loss that
+\texttt{penstock\_loss} encodes. The ``arbitrary tie-break'' framing in
+Section~\ref{sec:eda-round-2}, finding 4 is therefore too strong --- part of what looked arbitrary
+is hydraulic structure we were not modelling.}
+
+\finding{\textbf{The full water-to-energy chain is computable and unused.} Verified across all
+eight plants: reservoir level from the \texttt{vol\_head} curve, minus the plant's
+\texttt{outlet\_line}, reproduces the head references of that unit's \texttt{turb\_eff\_curves}
+(e.g.\ Tokke implied 390--395\,m vs.\ curve references 389/392.5/393.5\,m). So
+\emph{storage $\to$ head $\to$ efficiency $\to$ MWh per m\textsuperscript{3}} can be computed
+directly. Head varies widely with reservoir level for several plants --- Kjela 125--191\,m, Vesle
+Kjela 44--71\,m --- meaning the power obtained per unit of water depends strongly on fullness, a
+driver entirely invisible to the current model.}
+
+\subsubsection*{The 20 themes.}
+
+\begin{enumerate}\itemsep2pt
+  \item Seasonal normalisation of the slow series $\star$ \hfill \emph{[R3b: $+0.537$]}
+  \item Case-relative price normalisation \hfill \emph{[R3: $+0.263$]}
+  \item Price temporal windows, forward and backward \hfill \emph{[R3b]}
+  \item Price curve shape and structure
+  \item Water value: common factor vs.\ deviation \hfill \emph{[R3: PC1 $=$ 91\%]}
+  \item Price $-$ water-value spread \hfill \emph{[R2]}
+  \item Terminal / horizon boundary conditions \hfill \emph{[R3: $-0.41$]}
+  \item Storage state and trajectory
+  \item Inflow and hydrology regime \hfill \emph{[R3b: $+0.331$]}
+  \item \textbf{Commitment economics: start/stop costs} \hfill \emph{new source}
+  \item \textbf{Head and energy conversion} \hfill \emph{new source}
+  \item \textbf{Penstock and hydraulic coupling} \hfill \emph{new source}
+  \item \textbf{Flow limits and hydraulic losses (river/tunnel)} \hfill \emph{new source}
+  \item Topology graph aggregates, multi-hop \hfill \emph{[R2/R3]}
+  \item Plant aggregates and merit order \hfill \emph{[R2: 97.8\%/99.9\%]}
+  \item Unit static attributes and identity
+  \item Calendar and seasonality \hfill \emph{[R1]}
+  \item Case structure, horizon position and case-level summaries
+  \item \textbf{Case-sequence dynamics (input-only)} \hfill \emph{new source}
+  \item \textbf{Case-curve representation (PCA / Fourier)} \hfill \emph{new}
+\end{enumerate}
+
+Four practices apply across themes rather than forming themes of their own: recency weighting for
+the drift in Section~\ref{sec:eda-round-2} finding 9; interaction and ratio construction;
+historical-analogue matching; and feature \emph{removal} (the two constant columns, the fifteen
+redundant water-value columns).
+
+\subsubsection*{Iteration order.} Ordered by evidence over effort: seasonal percentiles first
+(1.1, 1.3), then inflow regime (9.1), case-relative price (2.1, 2.2), the raw spread (6.1), the
+terminal water value (7.1, 7.2), the free removal of constant columns (8.7), then the three new
+physical themes --- start costs (10.1, 10.2), head and conversion (11.1, 11.6), penstock structure
+(12.1--12.3) --- and finally the multi-hop map, recency weighting, case-curve PCA, and the
+count-based target reformulation. Every candidate is scored with the rolling-origin harness from
+Section~\ref{sec:cv-harness}, judged on \textbf{paired per-fold deltas}, not the mean.

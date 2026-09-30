@@ -1,0 +1,45 @@
+\subsection{2026-09-21 --- Centralizing the scattered data into a modeling table}
+\label{sec:modeling-table}
+
+\subsubsection*{Motivation.} The raw source files are scattered across several CSVs at different
+native granularities (hourly price/inflow, daily storage/water value, one row per 168-hour case
+for labels). Keeping them separate is fine, and good practice, as the unmodified source of
+truth. But a supervised model needs one row = one example, features..., target at the end ---
+so before any modeling, everything is joined once into a flat table, which also forces explicit,
+one-time decisions about how sources at different granularities align to a row and where the
+train/test boundary falls.
+
+\subsubsection*{Design decisions (discussed and agreed before building).}
+\begin{itemize}
+  \item \textbf{Row granularity: one row per (case, hour).} Considered alternatives: one row per
+    (case, hour, unit) (long format, $\sim$6.9M rows, simplest per-row model but duplicates
+    case/hour features 14$\times$ and drops the multi-unit correlation structure from
+    Section~\ref{sec:eda}), and one row per case (fully wide, 2{,}922 rows but 2{,}352 target
+    columns, awkward for standard tabular models). Case+hour keeps a manageable row count while
+    keeping all 14 units' targets on one row, so a model can see them jointly if we want it to.
+  \item \textbf{Raw joins only, no engineered features.} No normalization, no lags, no derived
+    columns at this stage --- feature engineering (e.g.\ the within-case price normalization
+    from Section~\ref{sec:eda}) is treated as a separate, explicit step.
+  \item \textbf{Core dataset (\texttt{data/kernel/}) only.} Extended data (topology,
+    constraints) intentionally left out until there's a concrete reason to use it.
+  \item \textbf{Per-reservoir columns kept separate}, not pre-aggregated (17 inflow + 17 storage
+    + 17 water-value columns, individually named), so nothing is thrown away before we've
+    decided how to use it.
+\end{itemize}
+
+\subsubsection*{Implementation.} \texttt{src/build\_modeling\_table.py}. Daily-native features
+(storage, water value) are repeated across each day's 24 hours since they're only observed once
+per day. Targets are reshaped from the labels file's wide format
+(\texttt{result\_committed\_<unit>\_t<hour>}) into one \texttt{on\_<unit>} column per unit.
+Output:
+
+\begin{itemize}
+  \item \texttt{data/processed/train\_hourly.parquet} --- 490{,}896 rows (2{,}922 cases
+    $\times$ 168 hours) $\times$ 72 columns (5 id/time columns, 53 raw features, 14 targets).
+  \item \texttt{data/processed/test\_hourly.parquet} --- 121{,}800 rows (725 cases $\times$
+    168 hours) $\times$ 58 columns (same features, no targets).
+\end{itemize}
+
+\finding{Spot-checked the join against raw source files (a mid-case UC label, a price value, a
+storage value at a specific timestamp) --- all matched exactly. No missing values after joining
+any feature column.}

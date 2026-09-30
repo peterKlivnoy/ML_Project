@@ -1,0 +1,154 @@
+\subsection{2026-09-22 --- Commitments are blocks: hour-level temporal structure}
+\label{sec:temporal}
+
+\subsubsection*{What we did}
+
+Section~\ref{sec:abcd} concluded that the current information set was saturated and that further
+architecture work was not worth doing. Looking instead for information we had never given the
+model, we checked what the pointwise model can actually see at the hour level. It receives 15
+engineered features, and every one of them is price-versus-water-value economics
+(\texttt{f05}, \texttt{f06}, \texttt{f07}, \texttt{f10}, \texttt{f14}, \texttt{f15}). There is no
+hour-of-day, no lag, no persistence, no window aggregate: each of the 168 hours is scored as an
+independent draw.
+
+\subsubsection*{Finding --- the independence assumption is wrong by an order of magnitude}
+
+\begin{finding}
+Commitments are contiguous blocks, not scattered hours.
+\[
+  P(\text{on at } t \mid \text{on at } t{-}1) = 0.995 \qquad
+  P(\text{on at } t \mid \text{off at } t{-}1) = 0.007
+\]
+Units switch state \textbf{0.5--3.6 times per 168-hour week}, against 9.3--27.2 if the same hours
+were scattered at random --- roughly \textbf{9.5x more contiguous than chance}. Each unit-week
+contains 1.2--2.7 contiguous ON blocks.
+\end{finding}
+
+The start costs in the topology are the obvious cause: the optimiser will not pay to cycle a unit
+hourly. The effective dimensionality of a unit-week is therefore not 168 bits but roughly a count
+plus two or three changepoints --- and we had been modelling it as 168 independent decisions.
+
+\subsubsection*{The obvious fix is wrong}
+
+If commitments are blocks, allocate each unit's $c$ hours as one contiguous window. Tested
+against the current rule (the $c$ highest-spread hours), both given ORACLE counts:
+
+\begin{center}\small
+\begin{tabular}{lr}
+\toprule
+allocation rule (oracle counts, 2021) & micro-AUC \\
+\midrule
+top-$c$ spread hours (current) & \textbf{0.9485} \\
+best contiguous $c$-window     & 0.9057 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{finding}
+Imposing a single contiguous window is \textbf{worse} than ranking hours by spread, by $-0.0428$.
+1.2--2.7 blocks is not 1 block, and a one-window shape is too rigid. Persistence is real but does
+not license a hard allocation rule.
+\end{finding}
+
+(This oracle is built differently from the 0.9765 of Section~\ref{sec:oracle} --- hard 0/1 on
+2021 using system spread for every unit --- so the two figures are not comparable. Only the two
+rows above are comparable to each other.)
+
+\subsubsection*{What did work: the same structure as features}
+
+\texttt{src/hourly\_structure.py} gives the model, per hour and always within a case: centred
+window means at $w \in \{3,6,12,24,48,96\}$ with their ranks and best-window membership; run
+structure (position within, and length of, the current above-median stretch); distance to the
+week's peak and trough; cumulative share of the week's positive spread; lags and leads at 1, 3
+and 24 hours as differences; and hour-of-day and day-of-week cyclically encoded. All are
+scale-free or differenced against the case's own level, so none reintroduces the drifting price
+level of Section~\ref{sec:diagnosis}.
+
+\begin{center}\small
+\begin{tabular}{lrrr}
+\toprule
+arm & feats & micro-AUC & Lio \\
+\midrule
+base (15 pruned $+$ 84 count) & 99  & 0.9417 & 0.8157 \\
+$+$ hourly structure          & 135 & \textbf{0.9442} & 0.8190 \\
+$+$ count-coupled windows     & 127 & 0.9418 & 0.8180 \\
+$+$ both                      & 163 & 0.9430 & 0.8181 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{finding}
+Hour-level temporal structure is worth \textbf{$+0.0025$} (0.9417 $\to$ 0.9442), the first
+confirmed improvement since Section~\ref{sec:compact} and larger than A, B, C and D combined.
+The gain is in the generic window and run features; \emph{coupling} the window length to the
+predicted count adds nothing ($+0.0001$), so the value is in knowing that hours come in stretches,
+not in knowing how long this unit's stretch will be.
+\end{finding}
+
+Per-unit: Vinje\_G3 $+0.014$, Haukeli $+0.005$, Hogga $+0.004$, Lio $+0.003$, Songa $-0.009$.
+
+\subsubsection*{Screening harness, re-instantiated}
+
+\texttt{src/screening.py} restores the convention of Section~\ref{sec:cv-harness}: every third
+training case and 150 trees, used to rank candidates, never to score them. Strided by CASE rather
+than by row, because dropping rows within a case would leave that case's near-duplicate hours in
+the training set --- the leak of Section~\ref{sec:state}.
+
+On this experiment it predicted $+0.0034$ where the full fit gave $+0.0025$: right sign, right
+magnitude, 18s against 108s. Screening scores are biased low (base 0.9365 screened vs 0.9417
+full) and are labelled as such wherever they appear.
+
+\subsubsection*{Negative results from the same session}
+
+Two families built from data identified as unused in Section~\ref{sec:diagnosis}, both rejected:
+
+\begin{itemize}
+  \item \textbf{67-year inflow climatology} (\texttt{exogenous.inflow\_climatology}, 171
+        features). Day-of-year reference distributions from the full 1958--2025 record instead of
+        the $\sim$8 years of case dates. Micro 0.9415 vs 0.9417 base; Lio $+0.005$.
+  \item \textbf{Minimum-flow obligation} (\texttt{exogenous.minflow\_obligation}, 99 features).
+        Resolved to the plant that must satisfy each constraint, converted to a forced capacity
+        factor. Micro 0.9392. \textbf{Killed by arithmetic before the model saw it}: Lio at
+        minimum load passes 4.82 m$^3$/s against a Byrtevatn obligation of 0.07 (max 0.20), so
+        \texttt{mfo\_forced\_cf\_Lio} never exceeds 0.042 and the constraint never binds. A
+        physically sound hypothesis at the wrong order of magnitude.
+\end{itemize}
+
+Also rejected: \textbf{per-unit probability calibration}. Lio is the largest single drag on the
+pooled score (removing it lifts micro by $+0.0077$; an oracle Lio is worth $+0.0146$) and is
+over-predicted on average (mean 0.612 against a base rate of 0.545), which suggests a logit
+offset. It fails, and instructively:
+
+\begin{center}\small
+\begin{tabular}{lr}
+\toprule
+& micro-AUC \\
+\midrule
+uncalibrated & \textbf{0.9417} \\
+oracle per-unit calibration (true 2021 base rates) & 0.9346 \\
+legal, training base rates & 0.9363 \\
+legal, Lio only & 0.9288 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{finding}
+Even \emph{oracle} calibration hurts. A per-unit logit shift is uniform across cases, so it
+cannot fix within-case ordering, and it disturbs cross-unit interleaving that was already roughly
+right. A monotone per-unit transform also leaves own-AUC exactly unchanged (Lio $0.8157 \to
+0.8157$). \textbf{Lio cannot be fixed by post-processing; only by better discrimination.} Same
+family of error as the rank-transform failure of Section~\ref{sec:state}.
+\end{finding}
+
+\subsubsection*{What this implies}
+
+The count stage contributes $+0.106$ (pointwise alone 0.8346 $\to$ 0.9402 with counts); everything
+else combined contributes an order of magnitude less. The count model has been doing nearly all
+the work, and the pointwise model has been little more than an allocator with 15 features.
+Temporal structure is the first evidence that the allocation half has real headroom.
+
+Next is the long-format restructure (\texttt{src/longform.py}): one row per (case, hour, unit),
+which removes shared splits, collapses the 84-column count block to 6 \texttt{own\_} columns, and
+makes per-unit weighting possible for the first time. Its main risk is losing the cross-unit
+interaction a wide row carries for free, which \texttt{longform.cross\_unit\_context} attempts to
+restore as relative quantities.

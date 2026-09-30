@@ -1,0 +1,118 @@
+\subsection{2026-09-23 --- Hyperparameters, and what effective sample size means in two shapes}
+\label{sec:tuning}
+
+\subsubsection*{What we did}
+
+Neither model had been tuned. The pointwise model's settings were inherited from the wide
+architecture; the count model's were unchanged since Section~\ref{sec:oracle}, surviving a
+3-class $\to$ 6-class head change, growth to 462 features, and the entire long-format rebuild.
+
+Coordinate descent, one knob at a time, validation year 2021, stride 3 held constant. Not a final
+tuning phase --- a 20-minute probe to find anything badly mis-set.
+
+\subsubsection*{The pointwise model: $+0.0028$}
+
+\begin{center}\small
+\begin{tabular}{lrr}
+\toprule
+knob & from $\to$ to & micro-AUC \\
+\midrule
+baseline & --- & 0.9604 \\
+\texttt{min\_child\_weight} & $1 \to 500$ & \textbf{0.9622} \\
+\texttt{max\_depth} & $8 \to 10$ / $12$ & 0.9621 / 0.9620 (no gain) \\
+capacity & $300{\times}0.10 \to 600{\times}0.05$ & \textbf{0.9632} \\
+\texttt{colsample\_bytree} & $0.8 \to 0.5$ / $0.3$ & 0.9625 / 0.9626 (no gain) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{finding}
+\texttt{min\_child\_weight} was the one badly mis-set knob, and it was predictable from the data
+rather than from a grid. The long-format table has 5.2M rows, but
+$P(\text{on}\mid\text{on}_{t-1}) = 0.995$ and each unit-week holds 1--3 contiguous blocks
+(Section~\ref{sec:temporal}), so the independent information is roughly 40k--120k blocks. A leaf
+minimum of 1 lets a split form from rows that are all the same block of the same unit-week ---
+fitting autocorrelation. Raising it to 500 is worth $+0.0018$.
+\end{finding}
+
+Depth not helping is worth recording as a wrong prediction: the argument was that long format
+exists to allow per-unit specialisation and needs depth to pay for it. It does not, because the
+\texttt{cf\_*} features are already unit-specific, so the tree never has to split on unit first
+to reach unit-specific structure.
+
+\subsubsection*{The count model: nothing beats the original settings}
+
+Screened on multi-class \textbf{log-loss}, not count MAE. Section~\ref{sec:abcd} established MAE
+moves opposite to micro-AUC because it scores only the collapsed point estimate, while what is
+forwarded is the whole distribution; log-loss is a proper scoring rule for that distribution.
+
+\begin{center}\small
+\begin{tabular}{lrr}
+\toprule
+& log-loss & count MAE \\
+\midrule
+\textbf{current} (400{\texttimes}0.05, d5, mcw 1, cs 0.6) & \textbf{1.0989} & 23.48h \\
+\texttt{min\_child\_weight} 10 / 50 / 200 & 1.1203 / 1.1087 / 1.1517 & \\
+\texttt{max\_depth} 4 / 6 / \textbf{8} & 1.1207 / 1.1214 / \textbf{1.1983} & \textbf{20.69h} \\
+800{\texttimes}0.03 / 1200{\texttimes}0.02 & 1.1091 / 1.0994 & \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{finding}
+No parameter beats the settings chosen in Section~\ref{sec:oracle}. Downstream confirmation:
+old params 0.9632, ``tuned'' params 0.9632 --- byte-identical, because the search returned the
+starting point.
+\end{finding}
+
+\begin{finding}[The clearest demonstration of the MAE trap]
+\texttt{max\_depth=8} gives the \textbf{best count MAE (20.69h) and the worst log-loss (1.1983)}.
+Optimising MAE would have selected precisely the wrong model. Every MAE-guided decision from
+Section~\ref{sec:oracle} onward is suspect in this direction.
+\end{finding}
+
+\begin{finding}[Same principle, opposite answers]
+\texttt{min\_child\_weight} is best at \textbf{500} for the pointwise model and \textbf{1} for
+the count model. Not a contradiction: count rows are whole unit-weeks and genuinely independent,
+so effective $n \approx$ nominal $n$ and small leaves are legitimate. Pointwise rows are hourly
+and autocorrelated at 0.995, so effective $n$ is $\sim$50$\times$ below nominal. The knob should
+be set from the correlation structure of the rows, not from a default.
+\end{finding}
+
+\subsubsection*{The forwarded-feature budget is also already right}
+
+The count model's top 120 features by gain are attached per unit to the pointwise model as
+\texttt{cf\_*}. The 120 was chosen arbitrarily when the architecture was built, and it is a
+\emph{fixed budget}, so adding features to the count model reallocates rather than accumulates.
+
+\begin{center}\small
+\begin{tabular}{lr}
+\toprule
+forwarded budget & micro-AUC \\
+\midrule
+\textbf{top-120} & \textbf{0.9632} \\
+top-180 & 0.9609 \\
+top-200 & 0.9618 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{finding}
+Wider is worse. This also kills the hypothesis offered in Section~\ref{sec:negatives} for why the
+slope family hurt --- that slopes crowded the budget and evicted useful features. Widening the
+budget does not rescue them, so they simply do not help most units.
+\end{finding}
+
+\subsubsection*{Screening harness}
+
+\texttt{src/screening.py} restores the convention of Section~\ref{sec:cv-harness}: every third
+training CASE (not row --- striding rows would leave a case's near-duplicate hours in training,
+the leak of Section~\ref{sec:state}) and 150 trees, used to rank and never to score. Calibrated
+on the hourly-structure experiment it predicted $+0.0034$ where the full fit gave $+0.0025$:
+right sign, right magnitude, 18s against 108s.
+
+Stride 3 is now the standing iteration protocol for a second reason: at full stride the working
+set crosses this machine's 26GB and the run begins paging. Measured, L5 at 1.7M rows takes 53s
+and L7 at 5.2M rows takes 6{,}537s --- \textbf{123$\times$ for 3$\times$ the data}, a cliff rather
+than a curve. Stride is held constant across arms, so deltas remain comparable while levels sit
+$\sim$0.002 below full stride.

@@ -1,0 +1,35 @@
+\subsection{2026-09-21 --- Problem framing and data overview}
+
+\subsubsection*{Task.} SINTEF Energy's InterOpt project: predict, for each of 14 generating units in
+the Tokke--Vinje hydropower system (17 reservoirs, 9 plants, southern Norway), the probability
+that the unit is ON at every hour of a 168-hour (one-week) rolling scheduling horizon. Ground
+truth comes from a SHOP optimization run. Submissions are scored on Kaggle with
+\textbf{micro-average ROC-AUC}. The intent (per the task PDF) is for a trained ML model to
+approximate what the optimizer would decide, to speed up real hydropower scheduling.
+
+\subsubsection*{Case structure.} The full problem spans 3{,}647 daily rolling cases
+(2015-01-01 to 2024-12-25). Labels only exist for the first 2{,}922 cases
+(2015-01-01 to 2022-12-31, \texttt{data/kernel/Unit\_commitment\_decisions.csv}); the remaining
+725 cases (2023-01-01 to 2024-12-25, \texttt{prediction\_mapping.csv}) are the held-out Kaggle
+test set.
+
+\subsubsection*{Data layout.} Two source folders, kept as raw, unmodified files (see
+Section~\ref{sec:modeling-table} for why we don't leave them scattered when actually modeling):
+
+\begin{itemize}
+  \item \texttt{data/kernel/} (core, required): hourly day-ahead price, hourly reservoir/river
+    inflow (17 reservoirs + 1 river), daily reservoir storage, daily marginal water value,
+    and the ground-truth unit commitment decisions.
+  \item \texttt{data/extended/} (optional context): watercourse topology
+    (\texttt{Tokke\_Vinje\_topology.yaml}, SHOP-format graph of reservoirs / rivers / tunnels /
+    plants / generators), a topology diagram PDF, and hourly environmental constraints (minimum
+    reservoir volume, minimum river flow).
+\end{itemize}
+
+\finding{No missing values in any core or extended file; reservoir naming is consistent across
+files; \texttt{Constraint\_min\_volume}/\texttt{min\_flow} reservoirs/rivers are a strict subset
+of the full 17. The data is clean going in.}
+
+\finding{\texttt{total\_calculation\_time} (SHOP solver runtime) is present in the training
+labels file but is solver metadata, not a feature --- it does not exist for the test cases we
+need to predict. It must be excluded from any feature pipeline to avoid leakage.}

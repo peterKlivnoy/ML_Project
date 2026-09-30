@@ -1,0 +1,30 @@
+% Shared packages, macros, and page setup for the project log.
+\usepackage[a4paper,margin=2.5cm]{geometry}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{xcolor}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage[colorlinks=true,linkcolor=blue!50!black,citecolor=blue!50!black,urlcolor=blue!50!black]{hyperref}
+\usepackage{parskip}
+
+% \finding{text} -- a highlighted callout for a discovery worth remembering at a glance.
+\newcommand{\finding}[1]{%
+  \par\medskip\noindent
+  \fcolorbox{black!20}{black!4}{%
+    \parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule}{\textbf{Finding.} #1}%
+  }%
+  \par\medskip
+}
+
+% \supersededby{label}{reason} -- a one-line forward pointer left on an old entry when a later
+% entry revises or overturns it. The old entry's text is left otherwise unchanged; see
+% "Revising earlier decisions and findings" in report_rules.md.
+\newcommand{\supersededby}[2]{%
+  \par\smallskip\noindent
+  {\small\textcolor{black!55}{$\dagger$ \textbf{Superseded} --- see Section~\ref{#1}: #2}}%
+  \par\smallskip
+}

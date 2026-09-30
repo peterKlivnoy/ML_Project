@@ -1,0 +1,77 @@
+\subsection{2026-09-21 --- Pruning: 15 features beat 299}
+\label{sec:pruning}
+
+Ranked all 299 features by gain from a single fit, swept feature-set size under the screening
+config, then confirmed the winner under the full rolling-origin protocol and retrained it deeper.
+Script: \texttt{/tmp/prune.py}; selected list saved to
+\texttt{data/processed/pruned\_features.csv}.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Feature-set size vs.\ score. Full rolling-origin CV unless noted.}
+  \label{tab:pruning}
+  \begin{tabular}{lrrl}
+    \toprule
+    Feature set & Mean & SD & Note \\
+    \midrule
+    All 299                 & 0.8144 & 0.0304 & round-2 result \\
+    \textbf{Top 15}         & \textbf{0.8157} & \textbf{0.0158} & \textbf{best model so far} \\
+    Top 15, 900 trees       & 0.8097 & 0.0151 & more capacity \emph{hurts} \\
+    \midrule
+    \multicolumn{4}{l}{\emph{screening-scale sweep:} top-15 0.7936, top-30 0.7917,
+                        top-60 0.7845, top-120 0.7983, all-299 0.7899} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\finding{\textbf{Fifteen features score slightly higher than all 299 (0.8157 vs.\ 0.8144) with
+roughly half the fold variance (SD 0.016 vs.\ 0.030).} Around 284 of our engineered columns were
+redundancy or noise --- effectively the whole of round 2 and much of round 1. The score has been
+sitting at $\approx$0.81 since the spread and terminal-water-value stages; everything added
+afterwards moved it within noise.}
+
+\finding{\textbf{Capacity is not the binding constraint.} Raising the pruned model from 300 to
+900 trees \emph{lowered} the score (0.8157 $\to$ 0.8097). This resolves the concern raised
+earlier that screening at 150 trees might generate false negatives by starving the model of
+capacity: if anything we were already at or past the useful ceiling, so the screening
+configuration was not rejecting features for want of trees.}
+
+\finding{\textbf{Cumulative stage deltas systematically hid which features matter.} The
+\texttt{15\_merit\_order} stage measured $+0.0002$ cumulatively --- indistinguishable from
+nothing --- yet its features occupy five of the top fifteen slots by gain, including the single
+highest (\texttt{f15\_units\_justified\_Kjela}). Cascade features
+(\texttt{f14\_upstream\_spread\_*}) behave the same way. The explanation is redundancy, not
+uselessness: by the time those stages were added the information was already reachable through
+other columns, so the marginal delta was zero, but they are the \emph{cleanest carriers} of it and
+survive pruning while their substitutes do not. Cumulative testing cannot distinguish ``adds
+nothing new'' from ``adds nothing at all''; ablation and pruning can.}
+
+\subsubsection*{The surviving fifteen.}
+\texttt{f15\_units\_justified\_\{Kjela,Vinje,Vesle\_Kjela\}},
+\texttt{f15\_cap\_share\_needed\_\{Kjela,Byrte,Vesle\_Kjela\}},
+\texttt{f14\_upstream\_spread\_\{Byrte,Songa\}},
+\texttt{f07\_price\_minus\_terminal\_wv},
+\texttt{f06\_spread\_\{sys,Byrte,Vesle\_Kjela\}},
+\texttt{f06x\_margin\_Haukeli},
+\texttt{f10\_breakeven\_hours\_Kjela},
+\texttt{f05\_wv\_dev\_Kjela}.
+
+Every one is an economic quantity: a spread, a margin, a break-even, or a capacity-justification
+derived from a spread. No raw price, storage, inflow or calendar column survives. This is
+consistent with the round-1 finding that encoded decision rules beat statistical transforms, and
+it sharpens it --- the model appears to need only a handful of well-formed economic signals, and
+the remaining error is not for want of more feature variants.
+
+\subsubsection*{Correction to the round-2 audit.}
+Section~\ref{sec:feature-iter-2} listed production levels as ``not in the dataset'', offered as a
+candidate explanation for the ceiling. That is too strong: production is \emph{derivable} from a
+water balance, \texttt{release} $=$ \texttt{storage}$[d]$ $-$ \texttt{storage}$[d+1]$ $+$
+\texttt{inflow}$[d]$, and storage covers the test period. A first test gave weak correlations
+(0.05--0.23 with plant commitment), but that test was itself wrong: it counted only natural
+inflow and ignored that reservoirs also receive \emph{discharge from upstream plants}, which is
+precisely the term that matters for cascaded reservoirs such as Vinjevatn. The diagnostic is that
+Haukeli scored highest (0.233) despite its reservoir having constant synthetic storage, so that
+correlation is driven by inflow rather than release. The idea is untested, not refuted; a correct
+version requires solving the full cascade balance.
+\supersededby{sec:pruning}{``production levels are not in the dataset'' is withdrawn --- they are
+derivable via a cascade water balance.}

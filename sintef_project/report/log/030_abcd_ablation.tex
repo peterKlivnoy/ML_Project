@@ -1,0 +1,144 @@
+\subsection{2026-09-22 --- Testing the four structural fixes (A/B/C/D)}
+\label{sec:abcd}
+
+\subsubsection*{What we did}
+
+Section~\ref{sec:diagnosis} diagnosed four structural problems and proposed a fix for each. This
+entry tests all four, isolated and in combination, against the standing best
+(\texttt{compact\_distilled}, 0.9402 on validation year 2021). Implementation is
+\texttt{src/count\_model.py}; the ablation is \texttt{/tmp/abcd.py}.
+
+Count predictions are fed to the pointwise model \emph{in-sample} on training rows, matching the
+established configuration rather than cross-fitting --- the control arm reproduces the standing
+best exactly (\texttt{MAE 24.21h | micro 0.9402}), which confirms the harness is measuring the
+same thing as Section~\ref{sec:compact}.
+
+\begin{center}\small
+\begin{tabular}{llrrr}
+\toprule
+arm & configuration & feats & count MAE & micro-AUC \\
+\midrule
+\texttt{base}    & v2 437, 3-class head (control)      & 437 & 24.21 & 0.9402 \\
+\texttt{B}       & v2 437, \textbf{binned head}        & 437 & 25.65 & \textbf{0.9417} \\
+\texttt{A\_none} & v3 unit-resolved, no absolute       & 230 & 35.27 & 0.9118 \\
+\texttt{A\_abs30}& v3 $+$ top-30 absolute              & 260 & 24.80 & 0.9364 \\
+\texttt{A\_abs80}& v3 $+$ top-80 absolute              & 310 & 24.58 & 0.9395 \\
+\texttt{AB}      & \texttt{A\_abs80} $+$ binned head   & 310 & 25.12 & 0.9412 \\
+\texttt{ABC}     & $+$ stationarised levels            & 308 & 25.89 & 0.9403 \\
+\texttt{ABC\_noD}& \texttt{ABC} minus group attributes & 303 & 25.79 & 0.9391 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsubsection*{A --- REJECTED, and the diagnosis that motivated it was over-read}
+
+\begin{finding}
+Narrowing the count model's input is monotonically harmful. Absolute per-plant columns are worth
+more the more of them you keep: 230 features $\to$ 0.9118, 260 $\to$ 0.9364, 310 $\to$ 0.9395,
+437 $\to$ 0.9402. There is no compact sweet spot. Removing the shared block entirely costs
+$-0.0285$ and blows count MAE out from 24.2h to 35.3h.
+\end{finding}
+
+Section~\ref{sec:diagnosis} measured, correctly, that 377 of 437 features are identical across the
+14 units of a case and carry 72.6\% of model importance. The \emph{inference} drawn from that
+measurement --- that the shared columns crowd out unit-specific signal and should be replaced by
+unit-relative resolutions --- is wrong. Those columns carry genuine case-level information about
+how much water the whole system is moving, and the unit-resolved rank/z-score/share features
+built to replace them do not substitute for it. A high shared-importance fraction is not by
+itself evidence of a pathology.
+
+This also re-confirms Section~\ref{sec:unitrel}, which found relative $+$ absolute beat relative
+alone. That result was assumed to be an artefact of the pre-compact architecture; it is not.
+\texttt{src/count\_model.py:build\_v3} is kept as the negative result, with
+\texttt{cross\_plant\_position} available should a future variant want scale-free cross-sectional
+features as an \emph{addition} rather than a replacement.
+
+\subsubsection*{B --- the only positive, and it works through the distribution, not the mean}
+
+The binned head replaces the 3-class classifier plus mixed-count regressor with a single 6-class
+classifier over $\{0\}$, $[1,29)$, $[29,85)$, $[85,141)$, $[141,168)$, $\{168\}$, forwarding
+\texttt{p\_off}, \texttt{p\_on}, \texttt{p\_low}, \texttt{p\_high} and \texttt{exp\_count}.
+It eliminates the second model entirely.
+
+\begin{finding}
+The binned head \emph{worsens} count MAE (24.21h $\to$ 25.65h) while \emph{improving} micro-AUC
+($+0.0015$), and does so with a consistent sign on two different feature sets (v2: $+0.0015$;
+v3$+$abs80: $+0.0017$). The gain comes from forwarding the distribution's \textbf{shape}, not
+from a better point estimate --- exactly the mechanism Section~\ref{sec:diagnosis} predicted from
+the bimodality of mixed weeks.
+\end{finding}
+
+\begin{finding}[Methodological]
+\textbf{Count MAE is a partly misleading optimisation target.} It scores only the point estimate
+and moved opposite to micro-AUC here. We have steered on it since Section~\ref{sec:oracle}.
+Every historical MAE-based decision is therefore suspect in the same direction, and future
+screening should read both.
+\end{finding}
+
+At $+0.0015$ against a fold SD of 0.0128 this is not yet a result. It is a consistent sign worth
+confirming under walk-forward, nothing more.
+
+\subsubsection*{C and D --- inconclusive, because they were chained to the losing branch}
+
+Both were tested on top of \texttt{A\_abs80}, which is itself $-0.0007$ below the control. That
+was a sequencing error in the ablation script: C and D should have been stacked on the best
+overall arm (\texttt{B} on v2), not on the best A variant.
+
+\begin{itemize}
+  \item \textbf{C (stationarised levels)}: $-0.0009$ (\texttt{AB} 0.9412 $\to$ \texttt{ABC}
+        0.9403). Replacing 47 drifting level features with 45 ratios did not help in-period.
+        Note that an in-period test is structurally unable to reward stationarity: the benefit,
+        if any, is out-of-period robustness in 2023--24, which validation on 2021 cannot see.
+  \item \textbf{D (structural group attributes)}: $+0.0012$ (\texttt{ABC\_noD} 0.9391 $\to$
+        \texttt{ABC} 0.9403) --- comparable in size to B, from five columns.
+\end{itemize}
+
+Neither verdict should be treated as final. D in particular is cheap and looks as promising as B.
+
+\subsubsection*{Per-unit: one of the four broken units moved}
+
+\begin{center}\small
+\begin{tabular}{lrrrr}
+\toprule
+unit & base & B & AB & ABC \\
+\midrule
+Lio\_G1     & 0.8220 & 0.8157 & 0.8215 & 0.8179 \\
+Haukeli\_G1 & 0.8770 & 0.8789 & 0.8656 & 0.8759 \\
+Hogga\_G1   & 0.8842 & 0.8878 & 0.8926 & 0.8882 \\
+Songa\_G1   & 0.9345 & 0.9350 & \textbf{0.9460} & \textbf{0.9471} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Songa gains $+0.0126$ under \texttt{AB}/\texttt{ABC} --- the first movement on any of the four
+chronically weak units in five entries. Songa is tunnel-fed, the case where the water-balance
+diagnosis of Section~\ref{sec:v2rejected} was confirmed but the fix failed; it is plausible that the
+binned head helps because Songa's mixed-week distribution is strongly U-shaped (0.432 below 56h,
+0.381 above 112h). \textbf{Lio is untouched by all eight arms}, sitting at 0.82 throughout.
+
+\subsubsection*{What this implies}
+
+\begin{finding}
+Across eight arms the spread is 0.9118--0.9417 and the best beats the control by $+0.0015$. A, B,
+C and D are all \textbf{rearrangements of information we already have}, and this is the seventh
+consecutive architecture-shaped intervention to return noise or harm. The evidence that the
+current information set is saturated is now strong enough to stop testing architecture.
+\end{finding}
+
+Recall also that the target of 0.98 sits \emph{above} the count-oracle of 0.9765
+(Section~\ref{sec:oracle}): even perfect counts under spread-rank allocation cannot reach it. The
+remaining gap needs new information, not a better arrangement of the current features.
+
+Next, therefore, is the unused data identified in Section~\ref{sec:diagnosis}:
+\begin{enumerate}
+  \item \textbf{67-year inflow climatology.} \texttt{Historical\_inflow} covers 1958--2025;
+        every seasonal-percentile feature currently builds its reference distribution from the
+        case dates (2015 onward), using roughly eight years of a 67-year record.
+  \item \textbf{Min-flow resolved to the obligated unit.} Both constraint files are joined as
+        raw series and never mapped to which unit is required to pass the water --- the natural
+        shape of an always-on explanation for a specific unit.
+\end{enumerate}
+
+Two secondary items carried forward: re-test D (and C) on top of \texttt{B}-on-v2 rather than the
+A branch, and re-instantiate the screening harness (\texttt{src/screening.py}) so an eight-arm
+ablation costs minutes rather than the 12 this one took.

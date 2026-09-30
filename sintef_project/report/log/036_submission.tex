@@ -1,0 +1,117 @@
+\subsection{2026-09-24 --- First submission: 0.98058 on the held-out test set}
+\label{sec:submission}
+
+\subsubsection*{What we submitted}
+
+\texttt{src/submit.py}, the lean long-format architecture at full stride:
+
+\begin{center}\small
+\begin{tabular}{ll}
+\toprule
+rows & 6{,}872{,}544 --- one per (case, hour, unit), all 2{,}922 training cases \\
+features & 207 (15 pruned economic, 35 terminal-water-value, 36 hourly structure, \\
+         & 141 count-table features attached per unit, 5 static) \\
+model & single binary XGBoost, 600 rounds, depth 8, \texttt{min\_child\_weight} 500 \\
+count model & fitted, but \textbf{only to rank features} --- its predictions are not forwarded \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{finding}
+\textbf{Public leaderboard: 0.98058}, against a walk-forward estimate of 0.9638 (SD 0.0115).
+The estimate was pessimistic by $+0.017$.
+\end{finding}
+
+\subsubsection*{Why walk-forward understated the score}
+
+Three differences between the folds and the submission, identified before the result arrived
+(Section~\ref{sec:longform} and the submission module's header), and now resolvable:
+
+\begin{enumerate}
+  \item \textbf{Training volume.} Every fold trained on 1{,}826--2{,}557 cases; the submission
+        trained on 2{,}922. Data volume has been the most reliable driver in the project --- count
+        MAE fell 29.9h $\to$ 18.1h across folds on volume alone (Section~\ref{sec:wf2}).
+  \item \textbf{Period difficulty.} The six folds span 2020--2022, including the energy crisis.
+        Per-case analysis (Section~\ref{sec:negatives}) showed the hardest cases are exactly the
+        high-price, negative-spread, high-switching weeks that period produced. The test window
+        is 2023--24, after it.
+  \item \textbf{Extrapolation horizon.} Folds predict at most six months ahead; the submission
+        predicts 24. This was flagged as the largest risk and \emph{did not materialise}.
+\end{enumerate}
+
+The best normal-period fold (2021-H1, 2{,}192 training cases) scored 0.9781. With 2{,}922 cases
+and a post-crisis period, 0.98 was reachable; what we could not do beforehand was size which
+force dominated.
+
+\begin{finding}[On trusting this number]
+The test set is $725 \times 168 \times 14 = 1.7$M cells, so the public half is roughly 850k.
+Micro-average ROC-AUC over that many cells has very little sampling noise, so the public and
+private halves should agree closely. This is not a competition where the public board misleads.
+\end{finding}
+
+\subsubsection*{What produced the result}
+
+Every gain that survived independent validation was a \textbf{correction or a simplification},
+not an invention:
+
+\begin{center}\small
+\begin{tabular}{lr}
+\toprule
+change & effect \\
+\midrule
+Dropping the count model's predictions (Section~\ref{sec:negatives}) & $+0.0082$ \\
+Tunnel-topology bug: Songa had no source reservoir (Section~\ref{sec:longform}) & $+0.0067$ \\
+Terminal water value read one day late (Section~\ref{sec:docs}) & $+0.0059$ \\
+Long format, one row per (case, hour, unit) (Section~\ref{sec:longform}) & $+0.006$ \\
+Hour-level temporal structure (Section~\ref{sec:temporal}) & $+0.0025$ \\
+Pointwise hyperparameters (Section~\ref{sec:tuning}) & $+0.0028$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Against that, \textbf{eighteen feature families were built and rejected}: slopes, economics,
+neighbour counts, full count distributions, per-unit masking, 70/30 unit-specific sets, 67-year
+inflow climatology, minimum-flow obligations, reweighting (five separate attempts), per-unit
+calibration, count-model tuning, wider and narrower forwarding budgets, block allocation, daily
+post-decision traces, and seasonal regime features.
+
+\begin{finding}[The pattern worth carrying forward]
+Nothing invented helped; everything corrected did. Two of the three largest gains were defects in
+our own code --- a graph traversal that missed tunnel-fed plants, and an off-by-one against the
+dataset documentation --- found by reading a three-page PDF and by asking why one unit regressed.
+\end{finding}
+
+\subsubsection*{A second pattern: validation-derived selection never transferred}
+
+Three feature-selection methods were tried, and every one that used validation data looked good on
+validation and failed on folds:
+
+\begin{center}\small
+\begin{tabular}{lrr}
+\toprule
+& single year 2021 & walk-forward \\
+\midrule
+count-model ranking (chosen without validation) & 0.9651 & \textbf{0.9638} \\
+trimmed by permutation importance $+$ unit-relative & \textbf{0.9671} & $\sim$0.9609 (3 folds, all worse) \\
+permutation top-60 (circular) & 0.9668 & not run \\
+held-out inner-split ranking & 0.9631 & not run \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Five independent random draws of 120 features spanned 0.9476--0.9619 (SD 0.0055), so selection is
+\emph{not} irrelevant --- an earlier claim that it was rested on a single lucky draw and was
+wrong. But the arbitrary ranking beat every deliberate one.
+
+\subsubsection*{What remains}
+
+The second submission is unspent. Given eighteen rejected families, a selection method that
+resists improvement, and a score already at target, the case for spending it is weak unless a
+change is first confirmed on walk-forward folds. Optimising against a public board is how a good
+private score is given away.
+
+Open, if work continues: Lio remains the weakest unit (0.8616 mean over folds, swinging 0.957
+$\to$ 0.656 within 2021 on a regime change no feature predicted); predicted commitments switch
+7.6 times a week against 3.0 in reality, so the persistence structure of
+Section~\ref{sec:temporal} is only partly captured; and the hardest 15\% of cases remain the
+autumn, negative-spread, high-cycling weeks where economics do not determine the answer.

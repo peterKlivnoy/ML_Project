@@ -1,0 +1,157 @@
+\subsection{2026-09-22 --- Long format, and two topology bugs}
+\label{sec:longform}
+
+\subsubsection*{What we did}
+
+Every pointwise model in this project has been \emph{wide}: one row per (case, hour) with 14
+outputs under \texttt{multi\_strategy="multi\_output\_tree"}. That shape was never chosen on
+evidence, and it forces three compromises simultaneously:
+
+\begin{enumerate}
+  \item \textbf{Shared splits.} A vector-leaf tree picks one split per node and applies it to all
+    14 outputs, so the model cannot specialise. Never measured.
+  \item \textbf{A 14x-wider count block than necessary.} Forwarding 6 numbers per unit costs 84
+    columns (\texttt{cnt\_p\_on\_Lio\_G1}, \texttt{cnt\_p\_on\_Songa\_G1}, \ldots). For Lio's
+    head to use Lio's own count, the tree must split on Lio's column --- and that split then
+    applies to the other 13 heads, where it is noise. Section~\ref{sec:diagnosis} measured the
+    symptom; Section~\ref{sec:abcd} showed the obvious fix was wrong.
+  \item \textbf{No per-unit weighting.} \texttt{sample\_weight} applies to a ROW, and a wide row
+    carries all 14 units, so a unit cannot be weighted at all.
+\end{enumerate}
+
+\texttt{src/longform.py} produces one row per (case, hour, unit) --- 6.9M rows at full stride.
+Micro-average ROC-AUC pools all (case, hour, unit) cells into one ranking, so in long format the
+metric is simply \texttt{roc\_auc\_score(y, p)}: \textbf{the objective is native to this shape}
+and awkward in the wide one.
+
+\subsubsection*{Results}
+
+\begin{center}\small
+\begin{tabular}{llrrr}
+\toprule
+arm & configuration & feats & micro-AUC & Lio \\
+\midrule
+--- & wide best (Section~\ref{sec:temporal}) & 135 & 0.9442 & 0.8190 \\
+\midrule
+L1 & long, 15 shared $+$ 6 \texttt{own\_}, no unit id & 29  & 0.9396 & 0.8102 \\
+L2 & $+$ unit identity (categorical)                  & 30  & 0.9399 & 0.8090 \\
+L3 & $+$ cross-unit context                           & 33  & 0.9421 & 0.8272 \\
+L4 & $+$ hourly structure                             & 69  & 0.9456 & 0.8276 \\
+L5 & $+$ top-120 count features per unit              & 189 & 0.9490 & 0.8337 \\
+L6 & $+$ Lio rows weighted 3x                         & 189 & 0.9479 & 0.8297 \\
+L7 & L5 at full stride (5.2M rows)                    & 189 & \textbf{0.9499} & \textbf{0.8380} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+L1--L6 train on every third case; only L7 uses all of them.
+
+\begin{finding}
+Long format reaches \textbf{0.9499}, against 0.9442 for the best wide model. The shape alone is
+not the win --- L1 is \emph{below} the wide baseline. The win comes from what the shape makes
+affordable: cross-unit context ($+0.0022$), hourly structure ($+0.0035$) and per-unit count
+features ($+0.0034$), none of which fit in the wide layout at acceptable cost.
+\end{finding}
+
+\begin{finding}
+\textbf{Count features at the hour level work in long format and failed in wide format}
+(Section~\ref{sec:orthogonal}: 0.9292 raw-forwarded vs 0.9402 distilled). The idea was sound; the
+wide layout made each feature cost 14 columns, so 120 features meant 1{,}680 columns of mostly
+noise. In long format each costs one column and lands on the row it belongs to.
+\end{finding}
+
+\begin{finding}
+\textbf{Per-unit weighting fails even where it is finally possible.} L6 weights Lio's rows 3x and
+loses $-0.0011$ overall \emph{and} $-0.0040$ on Lio itself. Third independent rejection of the
+reweighting family, after historical marginals (Section~\ref{sec:diagnosis}) and per-unit
+calibration (Section~\ref{sec:temporal}).
+\end{finding}
+
+\subsubsection*{Per-unit: the broken units finally move}
+
+\begin{center}\small
+\begin{tabular}{lrrr}
+\toprule
+unit & wide base & L7 & $\Delta$ \\
+\midrule
+Haukeli\_G1 & 0.8789 & \textbf{0.9082} & $+0.029$ \\
+Lio\_G1     & 0.8157 & \textbf{0.8380} & $+0.022$ \\
+Hogga\_G1   & 0.8878 & \textbf{0.9076} & $+0.020$ \\
+Vinje\_G1   & 0.9517 & 0.9661 & $+0.014$ \\
+Songa\_G1   & 0.9350 & \textbf{0.9059} & $\mathbf{-0.029}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Three of the four chronically weak units move substantially, for the first time in the project.
+Songa moves the other way, and that turned out to be diagnostic.
+
+\subsubsection*{Two topology bugs, found by asking why Songa regressed}
+
+In wide format Songa's head could lean on other units' columns. In long format its row carries
+\texttt{own\_*} features and nothing else --- so if those are missing, Songa has nothing. They
+are missing.
+
+\begin{finding}
+\texttt{plant\_graph} matched only DIRECT reservoir$\to$plant edges, but Songa is fed through
+tunnels (\texttt{Songavatn} $\to$ \texttt{Songavatn\_Songa} $\to$ \texttt{Songa}, and likewise
+from \texttt{Bitdalsvatn}). So \texttt{src["Songa"]} was \texttt{None}, every \texttt{own\_*}
+feature for Songa was NaN, and \texttt{mwh\_per\_m3("Songa", .)} returned NaN --- while Songavatn
+carries the \textbf{largest storage variance of any reservoir in the system} (sd 150) and
+Bitdalsvatn adds another (sd 25). Section~\ref{sec:v2rejected} diagnosed Songa as ``tunnel-fed''
+and attacked it with water-balance corrections; the defect was in the graph traversal.
+\end{finding}
+
+\begin{finding}
+Three reservoir-to-reservoir TUNNEL links were invisible to the same traversal:
+\texttt{Totak}$\to$\texttt{Vaamarvatn}, \texttt{Bordalsvatn}$\to$\texttt{Foersvatn},
+\texttt{Venemo}$\to$\texttt{Totak}. The first breaks the main cascade: Songa discharges into
+Totak, which tunnels into Vaamarvatn, which is Vinje's source. \textbf{Vinje's upstream plant set
+was empty and should contain Songa.} The second hides Bordalsvatn (sd 43) from Kjela.
+\end{finding}
+
+Fixed in \texttt{production\_features}: \texttt{\_through\_tunnels}, \texttt{plant\_sources},
+\texttt{reservoir\_tunnels} and \texttt{effective\_upstream\_plants}. \texttt{plant\_graph} keeps
+its single-source contract for existing callers but now resolves through tunnels, taking the
+largest-capacity reservoir as primary where a plant has several.
+
+\subsubsection*{A third finding, from the same question}
+
+Checking whether other units share Songa's problem turned up a different one:
+
+\begin{center}\small
+\begin{tabular}{llrrr}
+\toprule
+reservoir & plant & distinct values & sd & cv \\
+\midrule
+Vatjern     & \textbf{Haukeli} & \textbf{1} & 0.000 & 0.000 \\
+Hyljelihyl  & ---              & \textbf{1} & 0.000 & 0.000 \\
+Bandak      & \textbf{Hogga}   & 136        & 8.961 & 0.068 \\
+Vinjevatn   & Tokke            & 201        & 1.134 & 0.177 \\
+Byrtevatn   & Lio              & 1369       & 20.118 & 0.367 \\
+Foersvatn   & Kjela            & 2265       & 33.618 & 0.470 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{finding}
+\textbf{Haukeli's source reservoir is a literal constant} --- 0.150 for all 3{,}654 days. The
+post-decision storage trace, the single largest source of signal in the project
+(Section~\ref{sec:production}), \emph{does not exist} for Haukeli. Hogga's Bandak has 136 distinct
+values in ten years. The ``four broken units'' were never one problem: Songa was a graph bug,
+Haukeli and Hogga are missing data, and \textbf{Lio is neither} --- Byrtevatn varies normally, so
+Lio's difficulty remains unexplained.
+\end{finding}
+
+\subsubsection*{What this implies}
+
+The standing figure is \textbf{0.9499} on validation year 2021, from 0.9402 at the start of the
+session. The topology fix is re-running: it predicts specifically that Songa should recover from
+0.9059, since it gains two real reservoirs where it previously had NaN. That prediction is
+falsifiable and worth recording before the result arrives.
+
+Caveat: the fix changes features feeding \emph{both} stages, and every experiment to date fitted
+the count model around Songa's NaNs. The net effect could go either way.
+
+Still open: Lio, unexplained and worth $+0.0146$ alone; whether any of this survives walk-forward;
+and the submission pipeline, which has never been built.

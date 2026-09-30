@@ -1,0 +1,166 @@
+\subsection{2026-09-22 --- State of the model: architecture, features, data inventory}
+\label{sec:state}
+
+A consolidated description of what the model currently is, what every feature is made of, and
+exactly which data we do and do not use. Written because the project has accumulated fifteen
+builders, 299 columns and several architectures, and the question of what is actually left to
+exploit now matters more than the next variant.
+
+\subsubsection*{Scores, and which are comparable.}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Current results. The first block is 4-fold CV \emph{means}; the second is a single
+  validation year. Comparing across blocks is what made an earlier summary look contradictory.}
+  \begin{tabular}{llrr}
+    \toprule
+    Model & Protocol & Score & SD \\
+    \midrule
+    Raw features, joint tree   & 4-fold CV mean & 0.7074 & 0.061 \\
+    299 engineered features    & 4-fold CV mean & 0.8144 & 0.030 \\
+    \textbf{Pruned top-15}     & 4-fold CV mean & \textbf{0.8157} & 0.016 \\
+    \midrule
+    Pruned top-15              & 2022 only & 0.8210 & --- \\
+    Stage 1 (stride-2 fit)     & 2022 only & 0.8390 & --- \\
+    Stacked, uniform           & 2022 only & 0.8391 & --- \\
+    Stacked, gated on 2021     & 2022 only & 0.8432 & --- \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The 4-fold mean is held down by 2020 (0.7925); 2019/2021/2022 sit at 0.827/0.822/0.821. On the
+2022 fold specifically, gated stacking is $+0.022$ over the pruned model.
+
+\subsubsection*{The current model.}
+Stage 1 is a single \texttt{XGBClassifier} with \texttt{multi\_strategy="multi\_output\_tree"},
+300 trees, depth 6, lr 0.1, predicting all 14 units jointly from 15 shared features. Stage 2 (when
+used) is one depth-4 model per unit taking the unit's own stage-1 prediction as
+\texttt{base\_margin}, the other 13 predictions as features, and that unit's hydraulic
+neighbourhood. Rows are one per (case, hour): 490{,}896 training rows, 2{,}922 cases $\times$ 168
+hours, 14 binary targets per row.
+
+\subsubsection*{The fifteen features, and what each is made of.}
+
+\begin{center}
+\small
+\begin{tabular}{lll}
+\toprule
+Feature & Definition & Source data \\
+\midrule
+\texttt{f15\_units\_justified\_*} & $\mathrm{clip}(\text{spread},0)\cdot p_{\max}/p_{\min}$ & price, water value, generator specs \\
+\texttt{f15\_cap\_share\_needed\_*} & spread$^+$ normalised by its case max & price, water value \\
+\texttt{f14\_upstream\_spread\_*} & price $-$ mean wv of upstream cascade & price, water value, topology graph \\
+\texttt{f07\_price\_minus\_terminal\_wv} & price $-$ wv at case start $+$ 8 days & price, water value (boundary) \\
+\texttt{f06\_spread\_sys} & price $-$ mean of all 17 water values & price, water value \\
+\texttt{f06\_spread\_*} & price $-$ own reservoir's water value & price, water value, topology \\
+\texttt{f06x\_margin\_Haukeli} & spread $\times$ plant capacity & price, water value, $p_{\max}$ \\
+\texttt{f10\_breakeven\_hours\_Kjela} & startcost $/$ (spread $\times p_{\max}$) & price, wv, \texttt{startcost\_const} \\
+\texttt{f05\_wv\_dev\_Kjela} & own wv $-$ system mean wv & water value, topology \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\finding{\textbf{Every surviving feature is an economic quantity built from price and water value},
+with topology and generator specs used only to decide \emph{which} water value and \emph{which}
+capacity. No raw price, storage, inflow, calendar or head column survives pruning. Storage and
+inflow enter the model only indirectly, through the water values the optimizer itself derived from
+them.}
+
+\subsubsection*{Data inventory.}
+
+\paragraph{Used, and how.}
+\begin{itemize}\itemsep1pt
+  \item \texttt{Historical\_day\_ahead\_price} --- the price term in every spread. Case-relative
+        transforms were built and tested but did not survive pruning.
+  \item \texttt{Synthetic\_water\_value} --- the other term in every spread; also system mean,
+        per-reservoir deviation, and the day$+$8 terminal value.
+  \item \texttt{Historical\_volume} --- built into seasonal percentiles and head; \emph{none
+        survived}. Enters only implicitly via water value.
+  \item \texttt{Historical\_inflow} --- trailing regimes and case-horizon sums; \emph{none
+        survived}.
+  \item \texttt{Tokke\_Vinje\_topology.yaml} --- reservoir$\leftrightarrow$plant edges and the full
+        cascade walk (which water value belongs to which unit); generator $p_{\min}$, $p_{\max}$,
+        \texttt{startcost\_const}; \texttt{vol\_head}, \texttt{outlet\_line} and efficiency curves
+        were used for head features that did not survive.
+  \item \texttt{Constraint\_min\_volume} / \texttt{Constraint\_min\_flow} --- used only inside
+        stage-2 per-unit models, wired per plant through the topology.
+\end{itemize}
+
+\paragraph{Available and still unused.}
+\begin{itemize}\itemsep1pt
+  \item \textbf{Cascade water balance.} \texttt{release} $=$ \texttt{storage}$[d]-$\texttt{storage}$[d{+}1]+$\texttt{inflow}$[d]$
+        plus upstream plant discharge. This reconstructs \emph{implied production}, which is the
+        physical signature of the very decisions we predict. A naive version (natural inflow only)
+        gave weak correlations, but it omitted the upstream-discharge term that matters for
+        cascaded reservoirs (Section~\ref{sec:pruning}).
+  \item \textbf{River \texttt{up\_head\_flow\_curve}} --- head $\to$ maximum flow, i.e.\ hard
+        throughput ceilings per river. 37 river records, unused.
+  \item \textbf{Tunnel} \texttt{length}, \texttt{loss\_factor}, endpoint heights. 5 records, unused.
+  \item \textbf{Flow-dependent efficiency.} \texttt{turb\_eff\_curves} used only at peak;
+        \texttt{gen\_eff\_curve}, \texttt{stopcost\_const}, \texttt{main\_loss},
+        \texttt{penstock\_loss} unused.
+  \item \textbf{Case overlap.} Consecutive cases share 144 wall-clock hours at 88\% label
+        agreement; case-to-case input deltas are unused.
+  \item \textbf{Case-curve representation.} PCA / Fourier of the 168h price path, unused.
+  \item \textbf{Target reformulation.} Count per plant then merit-order expansion (97.8\%/99.9\%
+        accurate, Section~\ref{sec:eda-round-2}) --- never attempted.
+\end{itemize}
+
+\paragraph{Not in the dataset.}
+Production levels in MW (derivable, see above), the optimizer's dual values, demand or reserve
+requirements, and maintenance outages. Whether the provided inflow is the \emph{forecast} SHOP
+used or the realised actual is unresolved and would change what inflow features mean.
+
+
+\subsubsection*{Splitting scheme: measured, not assumed.}
+The temporal split has been assumed necessary throughout. Tested directly --- same model, same 15
+features, four ways of splitting:
+
+\begin{center}
+\begin{tabular}{lrr}
+\toprule
+Split & micro-AUC & vs.\ temporal \\
+\midrule
+Random ROW (80/20)              & \textbf{0.9571} & $+0.1224$ \\
+Random CASE (80/20)             & \textbf{0.9397} & $+0.1050$ \\
+Random CASE $+$ 7-day purge     & 0.7889 & $-0.0458$ \\
+Temporal (train $<$2022, validate 2022) & 0.8347 & --- \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\finding{\textbf{Random splitting inflates the score by $+0.10$ to $+0.12$, landing at 0.957 ---
+squarely in the range quoted for strong submissions.} The mechanism is \emph{not} temporal feature
+leakage, which the competition permits. It is near-duplicate rows: a case is 168 hours of one week,
+so a random row split trains on hour 5 and validates on hour 6 of the same case. Random
+\emph{case} splits still leak, because consecutive cases overlap on 144 wall-clock hours at 88\%
+label agreement (Section~\ref{sec:eda-round-2}). Any shuffled-validation number on this dataset
+should be treated as meaningless.}
+
+\finding{\textbf{The purged run is invalid as measured and is recorded as a failed design.}
+Purging $\pm$7 days around 584 randomly chosen validation cases removed \textbf{2{,}230 of 2{,}922}
+training cases --- 76\% of the data --- so 0.7889 reflects starvation, not a clean estimate. With
+daily rolling cases every case sits within 7 days of roughly fourteen others, making random-fold
+purging structurally self-defeating. A valid scheme needs \emph{contiguous} validation blocks with
+embargo only at the edges.}
+
+\finding{\textbf{This reframes the gap to 0.99.} The hidden test set is 725 consecutive cases in
+2023--24, temporally disjoint from training, so a random-split score would not transfer to the
+leaderboard. If scores near 0.99 are genuinely achievable there, the likeliest route is not a
+validation artefact but exploiting the \emph{physical consequence} of the decisions: reservoir
+storage evolves within each case as a direct result of generation, and the volume series covers
+the test period. Reconstructing implied production from the cascade water balance therefore moves
+from a speculative idea to the leading hypothesis for the missing $0.15$.}
+
+\subsubsection*{Levers not yet pulled.}
+\begin{enumerate}\itemsep1pt
+  \item \textbf{Validation scheme.} Everything so far uses temporal splits. Random or purged
+        case-level splits would cut estimate variance substantially --- tested separately, because
+        the risk here is near-duplicate rows, not temporal features.
+  \item \textbf{Target reformulation} --- predict per-plant counts, expand by merit order.
+  \item \textbf{Cascade water balance} --- implied production.
+  \item \textbf{Asymmetric stage 2} --- correction only where stage 1 is weak, keyed off training
+        performance rather than an unstable validation gate (Section~\ref{sec:stacked}).
+  \item \textbf{Hyperparameter tuning} --- deliberately untouched. Depth, learning rate, and
+        regularisation have never been varied; only tree count, which showed 300 beats 900.
+\end{enumerate}
