@@ -54,10 +54,33 @@ crisis that makes the validation folds hard. See log 036 for details.
 
 ---
 
-## Reproducing the submission
+## Getting started after cloning
 
-Requires Python 3.12+ with `pandas`, `numpy`, `pyarrow`, `xgboost` (3.x), `scikit-learn` and
-`pyyaml`. Development used Python 3.13, xgboost 3.4, pandas 2.3, numpy 2.2 and scikit-learn 1.7.
+Requires Python 3.12+. Development used Python 3.13.
+
+```bash
+git clone https://github.com/peterKlivnoy/ML_Project.git
+cd ML_Project
+
+python3 -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+The core packages in [`requirements.txt`](requirements.txt) are pinned to the versions that
+produced the submission. The notebook packages at the bottom of that file are only needed to
+open the EDA and experiment notebooks.
+
+A fresh clone already contains everything `submit.py` needs: the raw data in `data/kernel/` and
+`data/extended/`, and the base tables and pruned feature list in `data/processed/`. The one
+derived file that isn't committed is `data/processed/train_hourly_features.parquet` (114 MB,
+over GitHub's file size limit). It's only a cache for the experiment notebooks. To regenerate it:
+
+```bash
+cd sintef_project/src && python -m modeling.pipeline --build-only
+```
+
+## Reproducing the submission
 
 ```bash
 cd sintef_project
@@ -94,7 +117,7 @@ sintef_project/
 ├── data/
 │   ├── kernel/                 core inputs: price, inflow, storage, water value, UC labels
 │   ├── extended/               topology (YAML), min-flow / min-volume constraints
-│   └── processed/              derived tables (the 114 MB feature cache is git-ignored)
+│   └── processed/              derived tables (the 114 MB feature cache is git-ignored, see above)
 ├── src/
 │   ├── submit.py               ★ best model end to end
 │   ├── build_modeling_table.py raw files → one row per (case, hour)
