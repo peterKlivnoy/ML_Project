@@ -11,6 +11,38 @@ documentation are in [`ML_Task_TDT4173.pdf`](sintef_project/ML_Task_TDT4173.pdf)
 
 ---
 
+## New: physics-first model (walk-forward 0.9912, not yet submitted)
+
+The labels are the output of one deterministic optimiser (SHOP) whose inputs we have in full, so
+instead of learning inputs -> commitment from scratch, [`src/shoplite.py`](sintef_project/src/shoplite.py)
+rebuilds the weekly problem SHOP solved from the SHOP-ready topology YAML and solves it per case
+with HiGHS (LP, ~2 s/case). A LightGBM model then learns only where our replica disagrees with SHOP.
+
+| walk-forward, 6 half-year folds, stride 3 | mean micro-AUC | SD | test-like folds (2021-H2, 2022-H2) |
+|---|---|---|---|
+| submitted XGBoost model (re-run on the same folds) | 0.9619 | 0.0140 | 0.9644 |
+| raw LP solution, **no learning at all** | 0.9710 | 0.0079 | 0.9748 |
+| **LP + LightGBM** | **0.9912** | **0.0040** | **0.9934** |
+
+All six folds and all 14 units improve (Lio 0.864 -> 0.979, Haukeli 0.920 -> 0.973). Three
+conventions were measured from the labels rather than assumed (terminal water value, river flow
+cost, sibling tie-break). Full write-up: [`report/log/037_first_principles_optimiser.tex`](sintef_project/report/log/037_first_principles_optimiser.tex).
+
+```bash
+cd sintef_project/src
+python shoplite_batch.py lp                 # solve all 3,647 cases (~1.6 h on 4 cores; results committed)
+python physics_model.py walkforward 3       # walk-forward table above
+python physics_model.py submit ../submission_physics.csv
+# or everything unattended, committing results after each step:
+nohup bash run_physics_pipeline.sh > pipeline.log 2>&1 &
+```
+
+Needs `lightgbm` and `highspy` in addition to `requirements.txt`. The LP solutions for every case
+are committed in `data/processed/shoplite_lp_{unit,case}.parquet`, so the walk-forward and the
+submission run without re-solving.
+
+---
+
 ## Current best model at a glance
 
 | | |
@@ -120,6 +152,12 @@ sintef_project/
 │   └── processed/              derived tables (the 114 MB feature cache is git-ignored, see above)
 ├── src/
 │   ├── submit.py               ★ best model end to end
+│   ├── shoplite.py             ★ first-principles replica of SHOP's weekly optimisation (HiGHS)
+│   ├── shoplite_batch.py, shoplite_eval.py   solve every case / score the raw solution
+│   ├── physics_features.py, physics_model.py ★ LP + LightGBM (walk-forward 0.9912, submission)
+│   ├── baseline_walkforward.py walk-forward re-run of submit.py's model, fold by fold
+│   ├── adversarial.py          which training period resembles 2023-24 (2021-H2)
+│   ├── run_physics_pipeline.sh unattended end-to-end run
 │   ├── build_modeling_table.py raw files → one row per (case, hour)
 │   ├── features.py             feature stages (spreads, terminal water value, seasonal, …)
 │   ├── hourly_structure.py     hour-level temporal/block features

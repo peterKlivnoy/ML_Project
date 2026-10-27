@@ -1,0 +1,179 @@
+\subsection{2026-10-27 --- First principles: rebuild the optimiser, learn only its errors}
+\label{sec:shoplite}
+
+\subsubsection*{Why}
+
+Every model so far learned the map from inputs to commitment from scratch. But the labels are not
+observations of a noisy process: they are the output of one deterministic optimiser (SHOP v17.17),
+and every input it used is in our data. The topology YAML is SHOP-ready (head--volume curves,
+turbine efficiency curves per reference head, generator efficiency, start/stop costs, friction
+losses, tunnels, spillways); price, inflow, initial storage, terminal water value and the
+min-flow/min-volume series cover every case, test included. So instead of approximating SHOP with
+features, rebuild the problem it solved and solve it ourselves.
+
+\subsubsection*{What we built: \texttt{src/shoplite.py}}
+
+One linear programme per case, solved with HiGHS (simplex, $\sim$2\,s per case on one core;
+SHOP's own recorded solve times are median 52\,s, mean 147\,s):
+
+\begin{center}\small
+\begin{tabular}{ll}
+\toprule
+objective & $\max \sum_t \text{price}_t (\text{production}_t - \text{friction losses}_t)$
+  $-$ start/stop $-$ river, bypass, spill costs \\
+  & $-$ constraint penalties $+ \sum_r \text{terminal value}_r \cdot V_{r,T}$ \\
+water & hourly balance over 17 reservoirs, the Vest-Vassdraget junction and the Songa tunnel junction \\
+units & on/off $u$ (binary in the MILP, $[0,1]$ in the LP), $p_{\min}$ at $q_{\min}$, concave PQ envelope \\
+      & at the case's initial head; start/stop variables with the YAML costs \\
+losses & main-tunnel and shared-penstock friction as a convex piecewise-linear cubic in plant flow \\
+constraints & reservoir bounds; min volume and min flow (soft, heavily penalised) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Simplifications against SHOP, each a place our solution can disagree with the labels: heads frozen
+at the initial levels (SHOP iterates on head), tunnels between reservoirs are lossless links, and
+the units' initial on/off state is unknown, so hour 0 carries no start cost. We checked whether the
+initial state could be read off the previous case: hour 0 agrees with the previous case's hour 24
+only 80--96\% of the time, no more than any two overlapping cases agree, so it is not chained.
+
+\subsubsection*{Three conventions were measured from the labels, not assumed}
+
+\textbf{Terminal water value.} The file is in EUR/MWh; how SHOP converted it to EUR/Mm\textsuperscript{3}
+is undocumented. In weeks where a unit switches, its on-hour and off-hour prices bracket the price
+threshold SHOP used. Regressing that implied threshold on terminal water values:
+
+\begin{center}\small
+\begin{tabular}{lrrr}
+\toprule
+plant & $R^2$ (upstream WV only) & coef.\ upstream & coef.\ downstream \\
+\midrule
+Byrte & 0.99 & 0.98 & $-0.01$ \\
+Vesle Kjela & 0.97 & 0.95 & 0.04 \\
+Kjela & 0.96 & 0.89 & 0.15 \\
+Songa & 0.95 & 0.83 & 0.11 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\finding{Each plant's break-even price is the water value of the reservoir feeding it, and the
+downstream value does not enter. The documented SHOP conversion (EUR/MWh $\times$ the full-cascade
+conversion factor) predicts a large negative downstream coefficient and is refuted. The convention
+that reproduces the labels values one Mm\textsuperscript{3} in reservoir $r$ as
+$\sum_k \mathrm{WV}(\text{feeding reservoir of } k)\cdot \mathrm{conv}_k$ over the plants $k$ on its
+way to the sea.}
+
+\textbf{River flow cost.} \texttt{flow\_cost\_curve} on the \texttt{r\_} rivers read as a marginal
+cost per (m\textsuperscript{3}/s$\cdot$h) charged Kjela's discharge 33 EUR on its way through
+\texttt{r\_Hyljelihyl}; the LP duals showed exactly that gap. Read as total cost per hour (marginal
+= slope), Kjela's raw AUC went 0.70 $\to$ 0.96 and Haukeli's 0.93 $\to$ 0.99 (its water also
+arrives through a costed river).
+
+\textbf{Sibling tie-break.} Identical units are chosen in a fixed order: one Tokke unit on is G1
+99.1\% of the time, two are G1+G3 94.3\%, three G1+G3+G4 66\% (else G1+G2+G3); Vinje is G1, then
+G1+G2 (100\%). Stable in every year 2015--2022. Encoded as ordering constraints on $u$.
+
+Raw micro-AUC of the LP solution on a 59-case sample across 2015--2022, with no learning at all:
+0.937 (first version) $\to$ 0.963 (river cost) $\to$ 0.967 (sibling order).
+
+\subsubsection*{The MILP is a worse feature than the LP}
+
+Solving with binary $u$ gave 0.941 against the LP's 0.967 on the same sample. A binary schedule
+discards the LP's graded information about how close each hour is to the margin, and any small
+model error flips a whole block. It also exposed a genuine gap: SHOP keeps Lio on all week to meet
+the Vest-Vassdraget minimum flow (5--8\,m\textsuperscript{3}/s against $\sim$1.5 natural inflow) even
+when price is below Byrtevatn's water value, while our MILP pulses Lio one hour in six and covers the
+rest by bypassing Vinjevatn, whose water it values near zero because the small reservoir is about to
+overflow. Left to the learned correction.
+
+\subsubsection*{The learned correction: \texttt{src/physics\_features.py}, \texttt{src/physics\_model.py}}
+
+LightGBM on one row per (case, hour, unit), 61 features: the LP solution and its temporal context
+(\texttt{lp\_}: commitment, power, flow, local water value from the duals and the margin
+price $-$ local water value, rolling windows, run structure, plant-level count, reservoir
+trajectories), economics from the inputs (\texttt{ec\_}), the constraint series (\texttt{cn\_}),
+the observed storage trajectory (\texttt{st\_}, post-decision, available for test) and static unit
+attributes (\texttt{s\_}). 600 rounds, 127 leaves, \texttt{min\_data\_in\_leaf} 500.
+
+\subsubsection*{Results: walk-forward, six half-year folds, stride 3}
+
+The submitted XGBoost model was re-run on the same folds with \texttt{submit.py}'s own building
+blocks (\texttt{src/baseline\_walkforward.py}; the count model that ranks features is fitted on each
+fold's training weeks only). It reproduces log 036's 0.9638 to within 0.002.
+
+\begin{center}\small
+\begin{tabular}{lrrrr}
+\toprule
+fold & submitted XGBoost & raw LP (no learning) & LP + LightGBM & $\Delta$ \\
+\midrule
+2020-H1 & 0.9535 & 0.9720 & \textbf{0.9925} & $+0.0391$ \\
+2020-H2 & 0.9455 & 0.9671 & \textbf{0.9866} & $+0.0411$ \\
+2021-H1 & 0.9765 & 0.9787 & \textbf{0.9950} & $+0.0185$ \\
+2021-H2 & 0.9504 & 0.9695 & \textbf{0.9914} & $+0.0410$ \\
+2022-H1 & 0.9672 & 0.9586 & \textbf{0.9862} & $+0.0190$ \\
+2022-H2 & 0.9784 & 0.9802 & \textbf{0.9953} & $+0.0169$ \\
+\midrule
+mean (SD) & 0.9619 (0.0140) & 0.9710 (0.0079) & \textbf{0.9912 (0.0040)} & $+0.0293$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\finding{The optimiser alone, with no training data, beats the best learned model of the project on
+five of six folds (mean 0.9710 vs 0.9619). With a learned correction on top, every fold is above
+0.986, the mean rises by $+0.029$ to 0.9912, and the fold SD falls from 0.0140 to 0.0040. All 14
+units improve; the two the project never fixed move most --- Lio 0.864 $\to$ 0.979, Haukeli
+0.920 $\to$ 0.973.}
+
+Gain shares in the last fold: \texttt{lp\_} 86\%, static 6.5\%, economics 5.9\%, observed storage
+trace 1.7\%, constraints 0.2\%. The model leans on the optimiser, not on the post-decision trace
+that carried the previous architecture (log 022).
+
+% ABLATION
+
+\subsubsection*{Which validation period looks like the test set}
+
+Measured rather than assumed (\texttt{src/adversarial.py}): a classifier separating each period's
+weeks from the 2023--24 test weeks on case-level inputs (price level, volatility, negative-price
+share, water value, spread, fill, inflow). AUC near 0.5 means indistinguishable.
+
+\begin{center}\small
+\begin{tabular}{lrrrr}
+\toprule
+period & separability & mean price & price SD & spread to WV \\
+\midrule
+2015--2020 & 0.99--1.00 & 9--43 & 2--5 & $\geq 0$ \\
+2021 & \textbf{0.64} & 76 & 16 & $-16$ \\
+2022 & 0.93 & 211 & 50 & $-84$ \\
+test 2023--24 & --- & 65 & 22 & $-9$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+By half-year, 2021-H2 is closest (0.785), then 2022-H2 (0.879); every other half-year is
+$\geq 0.97$. This confirms log 020's choice of 2021 and refutes ``2022 resembles the test period''.
+On the two test-like folds the physics model averages 0.9934 against 0.9644. The test period also
+has negative prices in 2.2\% of hours, which training barely contains; the optimiser handles them
+from first principles (a unit is not worth running at a negative price) rather than by extrapolation.
+
+\subsubsection*{Caveats}
+
+\begin{itemize}
+  \item The three conventions above were chosen from label statistics over 2015--2022, which
+        includes the validation folds. They are three discrete structural choices, each stable
+        across years, so the room for overfitting is small --- but the protocol is not blind to them.
+  \item Both walk-forwards train on every third case (stride 3, the project's experiment
+        convention); the submission trains on all 2{,}922.
+\end{itemize}
+
+\subsubsection*{Submission}
+
+\texttt{submission\_physics.csv}: LP + LightGBM trained on all 2{,}922 labelled cases. Format checked
+against \texttt{sample\_submission.csv}; agrees with \texttt{submission.csv} on 92.9\% of cells at a
+0.5 threshold (correlation 0.92). Not yet uploaded.
+
+\subsubsection*{Open}
+
+Fidelity is now the lever, not features: Lio's min-flow behaviour, SHOP running units below their
+water value in some weeks (2019-07-09: Tokke, Vinje, Lio and Hogga on at price 35.6 against water
+values 40--43), Hogga's timing in weeks where Bandak must fill (degenerate in our LP), and heads
+frozen at their initial levels. Each improvement to the replica feeds the learned layer directly.

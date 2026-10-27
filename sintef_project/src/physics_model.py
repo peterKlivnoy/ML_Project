@@ -74,8 +74,9 @@ def per_unit_auc(y, p, unit):
     return out
 
 
-def walkforward(stride=1, rounds=ROUNDS, folds=FOLDS, drop_prefix=(), modes=("lp",)):
-    meta, X, names = load(modes)
+def walkforward(stride=1, rounds=ROUNDS, folds=FOLDS, drop_prefix=(), modes=("lp",),
+                data=None):
+    meta, X, names = data if data is not None else load(modes)
     keep = [i for i, n in enumerate(names) if not n.startswith(tuple(drop_prefix))]
     if len(keep) < len(names):
         X, names = X[:, keep], [names[i] for i in keep]
@@ -93,7 +94,8 @@ def walkforward(stride=1, rounds=ROUNDS, folds=FOLDS, drop_prefix=(), modes=("lp
         va = (st >= a) & (st < b) & ~np.isnan(y)
         bst = fit(X[tr], y[tr], names, rounds)
         p = bst.predict(X[va])
-        lp = X[va, names.index(f"{modes[0]}_p_rel")]
+        raw = f"{modes[0]}_p_rel"
+        lp = X[va, names.index(raw)] if raw in names else np.full(va.sum(), 0.5)
         r = dict(fold=f"{str(a)[:7]}", n_train_cases=len(np.unique(run[tr])),
                  micro=roc_auc_score(y[va], p), lp_raw=roc_auc_score(y[va], lp))
         r.update(per_unit_auc(y[va], p, meta["unit"].to_numpy()[va]))
@@ -146,5 +148,22 @@ if __name__ == "__main__":
             imp = pd.Series(bst.feature_importance("gain"), index=names)
             (imp / imp.sum()).sort_values(ascending=False).round(5).to_csv(
                 sys.argv[3].replace(".csv", "_importance.csv"), header=["gain_share"])
+    elif cmd == "ablation":
+        # one feature load, every variant on the same folds: which groups carry the result?
+        stride = int(sys.argv[2]) if len(sys.argv) > 2 else 3
+        data = load()
+        arms = {"full": (), "no_storage_trace": ("st_",), "no_optimiser": ("lp_",),
+                "optimiser_only": ("ec_", "cn_", "st_")}
+        rows = []
+        for arm, drop in arms.items():
+            print(f"--- {arm} (drop {drop})", flush=True)
+            d, _, _ = walkforward(stride=stride, drop_prefix=drop, data=data)
+            rows.append(d["micro"].rename(arm))
+        out = pd.concat(rows, axis=1).T
+        out["mean"] = out.mean(1)
+        out["test_like"] = out[TEST_LIKE].mean(1)
+        print(out.round(4).to_string(), flush=True)
+        if len(sys.argv) > 3:
+            out.to_csv(sys.argv[3])
     elif cmd == "submit":
         submit(sys.argv[2] if len(sys.argv) > 2 else str(S.ROOT / "submission_physics.csv"))

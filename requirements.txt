@@ -7,6 +7,10 @@ xgboost==3.4.1
 scikit-learn==1.7.2
 PyYAML==6.0.3
 
+# Physics-first model (src/shoplite.py, src/physics_model.py)
+highspy==1.15.1
+lightgbm==4.7.0
+
 # Notebooks (EDA, experiments, schedule visualisation)
 matplotlib>=3.10
 plotly>=5.0
