@@ -128,7 +128,30 @@ Gain shares in the last fold: \texttt{lp\_} 86\%, static 6.5\%, economics 5.9\%,
 trace 1.7\%, constraints 0.2\%. The model leans on the optimiser, not on the post-decision trace
 that carried the previous architecture (log 022).
 
-% ABLATION
+\subsubsection*{Ablation: where the gain comes from}
+
+Same folds, same LightGBM, one feature group removed at a time
+(\texttt{python physics\_model.py ablation 3}):
+
+\begin{center}\small
+\begin{tabular}{lrr}
+\toprule
+arm & mean micro-AUC & test-like folds \\
+\midrule
+full (61 features) & 0.9912 & 0.9934 \\
+without the observed storage trace (\texttt{st\_}) & 0.9910 & 0.9935 \\
+optimiser features and unit identity only & 0.9897 & 0.9925 \\
+\textbf{without the optimiser} (\texttt{lp\_}) & \textbf{0.9483} & 0.9502 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\finding{The optimiser is the result. The same learner on the same economic, constraint and storage
+features but without the LP scores 0.9483 --- below the previous XGBoost model --- so the gain is
+not LightGBM and not feature engineering. And the post-decision storage trace adds nothing
+(0.9910 without it): this is the project's first model that uses only information available before
+the week starts. The previous causal-only track stood at 0.8548 (log 022, single-year 2021
+protocol, so not directly comparable).}
 
 \subsubsection*{Which validation period looks like the test set}
 

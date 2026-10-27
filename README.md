@@ -24,7 +24,10 @@ with HiGHS (LP, ~2 s/case). A LightGBM model then learns only where our replica 
 | raw LP solution, **no learning at all** | 0.9710 | 0.0079 | 0.9748 |
 | **LP + LightGBM** | **0.9912** | **0.0040** | **0.9934** |
 
-All six folds and all 14 units improve (Lio 0.864 -> 0.979, Haukeli 0.920 -> 0.973). Three
+All six folds and all 14 units improve (Lio 0.864 -> 0.979, Haukeli 0.920 -> 0.973). The
+ablation says the optimiser is the result: the same LightGBM without the LP features scores 0.9483,
+and removing the post-decision storage trace changes nothing (0.9910), so the model uses only
+information available before the week starts. Three
 conventions were measured from the labels rather than assumed (terminal water value, river flow
 cost, sibling tie-break). Full write-up: [`report/log/037_first_principles_optimiser.tex`](sintef_project/report/log/037_first_principles_optimiser.tex).
 
