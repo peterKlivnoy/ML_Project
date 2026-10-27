@@ -112,3 +112,5 @@ if __name__ == "__main__":
     d = run(stride=int(sys.argv[1]) if len(sys.argv) > 1 else 3)
     pd.set_option("display.width", 250)
     print(d.round(4).T)
+    if len(sys.argv) > 2:
+        d.to_csv(sys.argv[2])

@@ -93,7 +93,7 @@ def walkforward(stride=1, rounds=ROUNDS, folds=FOLDS, drop_prefix=(), modes=("lp
         va = (st >= a) & (st < b) & ~np.isnan(y)
         bst = fit(X[tr], y[tr], names, rounds)
         p = bst.predict(X[va])
-        lp = X[va, names.index("lp_p_rel")]
+        lp = X[va, names.index(f"{modes[0]}_p_rel")]
         r = dict(fold=f"{str(a)[:7]}", n_train_cases=len(np.unique(run[tr])),
                  micro=roc_auc_score(y[va], p), lp_raw=roc_auc_score(y[va], lp))
         r.update(per_unit_auc(y[va], p, meta["unit"].to_numpy()[va]))
@@ -141,5 +141,10 @@ if __name__ == "__main__":
         d, bst, names = walkforward(stride=int(sys.argv[2]) if len(sys.argv) > 2 else 1)
         pd.set_option("display.width", 250)
         print(d.round(4).T)
+        if len(sys.argv) > 3:
+            d.to_csv(sys.argv[3])
+            imp = pd.Series(bst.feature_importance("gain"), index=names)
+            (imp / imp.sum()).sort_values(ascending=False).round(5).to_csv(
+                sys.argv[3].replace(".csv", "_importance.csv"), header=["gain_share"])
     elif cmd == "submit":
         submit(sys.argv[2] if len(sys.argv) > 2 else str(S.ROOT / "submission_physics.csv"))
