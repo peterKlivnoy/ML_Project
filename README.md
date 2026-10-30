@@ -16,7 +16,7 @@ documentation are in [`ML_Task_TDT4173.pdf`](sintef_project/ML_Task_TDT4173.pdf)
 | file | what it is | checked |
 |---|---|---|
 | `Short notebook 1.ipynb` | LP + LightGBM, end to end from the raw data (all code inline) | reproduces `submission_physics.csv` to 2e-13; LP code reproduces the stored solutions bit for bit |
-| `Short notebook 2.ipynb` | long-format XGBoost, public 0.98058 (all code inline) | design matrix verified identical to `submit.py`'s; full run compared with `submission.csv` |
+| `Short notebook 2.ipynb` | long-format XGBoost, public 0.98058 (all code inline) | design matrix verified identical to `submit.py`'s. With the pinned versions on x86 Linux the full run selects 143 count features instead of 141 and correlates 0.995 with `submission.csv` (98% of cells on the same side of 0.5); the thread count does not change this, so we attribute it to platform floating point (the upload was made on an Apple Silicon Mac) |
 | `Report.pdf` | the report, built from `report/Report.tex` (`pdflatex Report.tex` twice) | |
 
 The notebooks are generated from the source modules by `src/deliverables_build/make_short_notebook{1,2}.py`,
@@ -25,7 +25,7 @@ extracted `sintef_project/` folder (or next to it) and run it top to bottom.
 
 ---
 
-## New: physics-first model (walk-forward 0.9912, not yet submitted)
+## Physics-first model (walk-forward 0.9912; submitted, public score above 0.98058)
 
 The labels are the output of one deterministic optimiser (SHOP) whose inputs we have in full, so
 instead of learning inputs -> commitment from scratch, [`src/shoplite.py`](sintef_project/src/shoplite.py)

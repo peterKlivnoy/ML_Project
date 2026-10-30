@@ -461,9 +461,13 @@ taken to its conclusion.
   10^{-13}$; the notebook's LP code reproduces the stored solutions bit for bit.
 \item \textbf{Short notebook 2} (XGBoost): builds the hourly table from the raw files, the feature
   stages, the count table and model, the hourly structure and the long format, and trains on all
-  labelled cases ($\sim$1\,h, $\sim$14\,GB RAM). The long design matrix is assembled in place instead
-  of through pandas concatenations; it is verified identical to the original assembly, value for
-  value.
+  labelled cases (about 45\,min and $\sim$20\,GB of memory including swap on 4 cores). The long design matrix is assembled in place instead of through
+  pandas concatenations; it is verified identical to the original assembly, value for value. The
+  uploaded file was produced on an Apple Silicon Mac. On x86 Linux with the same package versions
+  the count model's importance ranking selects 143 count features instead of 141 (identically at 4
+  and 8 threads, so not a threading effect), and the output correlates 0.995 with the uploaded file,
+  with 98\% of cells on the same side of 0.5. We attribute this to platform-level floating-point
+  differences that reorder near-tied features; the notebook's last cell reports the comparison.
 \item Source modules, every experiment and its result: \texttt{src/}, \texttt{report/leaderboard.md},
   \texttt{report/runs/}.
 \end{itemize}

@@ -217,7 +217,7 @@ def fig_model():
 
     # --- contributions (SHAP values from the trees) on a sample of validation rows
     rng = np.random.default_rng(0)
-    idx = rng.choice(len(Xv), 150_000, replace=False)
+    idx = rng.choice(len(Xv), 20_000, replace=False)
     C = bst.predict(Xv[idx], pred_contrib=True)[:, :-1]
     mabs = pd.Series(np.abs(C).mean(0), index=names).sort_values(ascending=False)
     group = mabs.groupby(mabs.index.str.split("_").str[0]).sum().sort_values(ascending=False)
