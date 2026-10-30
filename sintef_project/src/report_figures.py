@@ -29,7 +29,7 @@ plt.rcParams.update({
     "text.color": INK, "axes.grid": True, "grid.color": GRID, "grid.linewidth": 0.8,
     "axes.spines.top": False, "axes.spines.right": False, "font.size": 9,
     "axes.titlesize": 10, "axes.titleweight": "bold", "legend.frameon": False,
-    "lines.linewidth": 2, "figure.dpi": 200,
+    "lines.linewidth": 2, "figure.dpi": 200, "axes.axisbelow": True,
 })
 FOLD_LABEL = {"2020-01": "2020-H1", "2020-07": "2020-H2", "2021-01": "2021-H1",
               "2021-07": "2021-H2", "2022-01": "2022-H1", "2022-07": "2022-H2"}

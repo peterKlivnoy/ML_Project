@@ -413,7 +413,58 @@ corrections --- e.g.\ that SHOP runs Lio harder than our LP does.
 \label{fig:r-gain}
 \end{figure}
 
-% CONTRIBUTIONS
+\paragraph{Contributions.} Split gain counts how much a feature is used in training, not how much it
+moves a prediction. TreeSHAP contributions (LightGBM's \texttt{pred\_contrib}) on 20{,}000 validation
+rows of the test-like 2021-H2 fold (fold AUC 0.9914) give the per-prediction view
+(Figure~\ref{fig:r-contrib}). The LP commitment $u$ moves the log-odds by 2.05 on average, nearly
+twice any other feature. Unit identity is second (1.14): it is the channel for per-unit corrections.
+Third is the margin, price minus the local water value from the LP duals (0.93), with its 7-hour
+rolling mean close behind: the learner reads how far each hour sits from the dispatch threshold,
+exactly the graded information a binary schedule discards (Section~\ref{sec:r-lp}). By group, LP
+features carry 70\% of the total absolute contribution, economics 15\%, unit identity and static
+attributes 13\%, the observed storage trace 2\% and the constraint series 1\%. Economics weigh more
+here than in split gain (15\% against 6\% of the gain in the last fold): many small adjustments
+rather than a few decisive splits.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\linewidth]{figures/physics_07_contributions.png}
+\caption{LP + LightGBM, 2021-H2 fold: mean absolute TreeSHAP contribution to the log-odds, top 15
+features (left) and share by feature group (right).}
+\label{fig:r-contrib}
+\end{figure}
+
+\paragraph{How the learned layer reads the LP.} The relaxation's $u$ is already roughly a probability
+(Figure~\ref{fig:r-lpshop}): SHOP commits in about 1\% of hours where $u=0$ and 94\% where $u=1$, and the
+on-rate rises close to the diagonal in between. The departures are unit-specific, which is why unit
+identity ranks second. Lio, which SHOP runs to meet the Vest-Vassdraget minimum flow, is committed
+in every hour where the LP gives it $u \geq 0.6$ and in three quarters of hours at $0.4$--$0.6$. Hogga,
+whose timing is degenerate in our LP when Bandak must fill, is committed in only 45\% of hours at
+$u$ between 0.6 and 0.8.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.68\linewidth]{figures/physics_08_lp_vs_shop.png}
+\caption{Share of hours SHOP commits, by the LP relaxation's $u$ in that hour (2021-H2 fold). Dashed:
+perfect calibration.}
+\label{fig:r-lpshop}
+\end{figure}
+
+\paragraph{One week.} Figure~\ref{fig:r-week} shows a test-like case the LP finds harder than three
+quarters of its fold. The relaxation spreads Tokke's commitment fractionally over four identical
+units and holds Lio at $u \approx 0.45$ until day 3.5. The learned layer concentrates Tokke on G1, the
+unit SHOP picks first, and sharpens Lio into the on-block SHOP chose; its within-case AUC is 0.999
+against the LP's 0.974. Its remaining error is inherited from the LP: Kjela, on all week in SHOP's
+schedule, dips where the relaxation dips (days 4.4--5.6).
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.86\linewidth]{figures/physics_09_example_week.png}
+\caption{Case starting 2021-07-02: SHOP's commitment (top), the LP relaxation with no learning
+(middle) and the LP + LightGBM probability (bottom), one row per unit, one column per hour.}
+\label{fig:r-week}
+\end{figure}
+
 
 \paragraph{The optimiser itself is interpretable.} Its decisions are explained by quantities with
 physical meaning: each unit runs when the price exceeds its local water value, which equals its
