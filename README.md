@@ -11,6 +11,20 @@ documentation are in [`ML_Task_TDT4173.pdf`](sintef_project/ML_Task_TDT4173.pdf)
 
 ---
 
+## Course deliverables (`sintef_project/deliverables/`)
+
+| file | what it is | checked |
+|---|---|---|
+| `Short notebook 1.ipynb` | LP + LightGBM, end to end from the raw data (all code inline) | reproduces `submission_physics.csv` to 2e-13; LP code reproduces the stored solutions bit for bit |
+| `Short notebook 2.ipynb` | long-format XGBoost, public 0.98058 (all code inline) | design matrix verified identical to `submit.py`'s; full run compared with `submission.csv` |
+| `Report.pdf` | the report, built from `report/Report.tex` (`pdflatex Report.tex` twice) | |
+
+The notebooks are generated from the source modules by `src/deliverables_build/make_short_notebook{1,2}.py`,
+so a change to `src/` is carried into them by re-running the generator. Place a notebook inside the
+extracted `sintef_project/` folder (or next to it) and run it top to bottom.
+
+---
+
 ## New: physics-first model (walk-forward 0.9912, not yet submitted)
 
 The labels are the output of one deterministic optimiser (SHOP) whose inputs we have in full, so
