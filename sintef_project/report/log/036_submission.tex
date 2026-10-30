@@ -9,8 +9,8 @@
 \begin{tabular}{ll}
 \toprule
 rows & 6{,}872{,}544 --- one per (case, hour, unit), all 2{,}922 training cases \\
-features & 207 (15 pruned economic, 35 terminal-water-value, 36 hourly structure, \\
-         & 141 count-table features attached per unit, 5 static) \\
+features & 207 (15 pruned economic, 10 terminal-water-value, 36 hourly structure, \\
+         & 141 count-table features attached per unit, unit identity + 4 static) \\
 model & single binary XGBoost, 600 rounds, depth 8, \texttt{min\_child\_weight} 500 \\
 count model & fitted, but \textbf{only to rank features} --- its predictions are not forwarded \\
 \bottomrule

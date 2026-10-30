@@ -193,8 +193,9 @@ competition data. It is the end point of the feature-engineering track described
    labelled cases; predict the 725 test cases.
 
 **Resources.** Full resolution trains on 6.87M rows × ~207 features. On a 4-core machine it
-takes about 45 minutes and peaks at **~20 GB of memory** while XGBoost quantises the training
-matrix (a 16 GB machine needs swap; macOS adds it automatically). `STRIDE = 3` trains on every
+takes about 40 minutes and peaks at **~24 GB of memory** (RAM plus swap), once while XGBoost
+quantises the training matrix and again at prediction. A 16 GB machine needs swap; macOS adds it
+automatically. `STRIDE = 3` trains on every
 third case for a quicker, lighter run.
 
 **Requirements:** the versions the uploaded file was produced with: `numpy==2.2.6 pandas==2.3.2

@@ -77,10 +77,10 @@ submission run without re-solving.
   identified by its features, not by a separate output head.
 - **207 features:**
   - 15 pruned economic features (price and water-value spreads, margins, break-evens).
-  - 35 terminal water-value features (read at start + 7 days, per the dataset docs).
+  - 10 terminal water-value features (read at start + 7 days, per the dataset docs).
   - 36 hour-level temporal-structure features (block/run structure, rolling windows, lags).
   - 141 per-unit features from a (case, unit) "count table" (`own_*`, `upstream_*`, absolute).
-  - 5 static unit attributes (p_max, p_min, merit order, number of siblings).
+  - unit identity plus 4 static unit attributes (p_max, p_min, merit order, number of siblings).
 - **The count model is used only for feature selection.** A 6-class XGBoost model over
   hours-ON bins is fitted to rank the count-table features. Its top 120 are kept, plus up to 30
   unit-relative features. The count model's predictions are **not** fed forward, and dropping
