@@ -1,0 +1,517 @@
+\documentclass[11pt]{article}
+\input{preamble}
+\usepackage{float}
+\usepackage{tabularx}
+\setlength{\emergencystretch}{3em}
+
+% ---- fill these in ------------------------------------------------------------------------
+\newcommand{\groupno}{[NN]}                            % Kaggle team name "[NN] ..."
+\newcommand{\members}{Member One, Member Two, Member Three}
+\newcommand{\kagglelp}{above 0.98058}                  % public score of the LP + LightGBM file
+% -------------------------------------------------------------------------------------------
+
+\title{Predicting hydropower unit commitment in Tokke--Vinje:\\
+from feature engineering to a first-principles optimiser\\[4pt]
+\large TDT4173 Machine Learning --- SINTEF task --- Group \groupno}
+\author{\members}
+\date{November 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We predict, for every hour of a one-week scheduling case and each of the 14 generating units of the
+Tokke--Vinje hydropower system, the probability that SINTEF's SHOP optimiser commits the unit.
+The work followed two tracks. The first engineered features for gradient-boosted trees: economic
+spreads between price and water value, terminal water values, a count model over hours-on per
+unit-week, hourly block structure and a long (case, hour, unit) format. It reached 0.9638
+micro ROC-AUC in walk-forward validation and \textbf{0.98058} on the public leaderboard. The second
+track starts from the observation that the labels are the output of a known optimisation problem
+whose inputs we hold in full: we rebuilt SHOP's weekly problem from the SHOP-ready topology file as
+a linear programme, solved it for every case, and trained a LightGBM model to correct the replica
+where it disagrees with SHOP. The optimiser alone, with no training data, scores 0.9710 in
+walk-forward validation; with the learned correction 0.9912, every one of six folds and all 14
+units improving over the first track, and \kagglelp{} on the public leaderboard. Ablations show
+the gain comes from the optimiser rather than the learner, and that the model uses only
+information available before the scheduling week starts.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+% =============================================================================================
+\section{The task}
+
+Short-term hydropower scheduling decides, hour by hour, which generating units run and at what
+level. SINTEF's SHOP software solves this as a mixed-integer optimisation problem; the InterOpt
+project asks whether a machine-learning model can predict SHOP's on/off (unit-commitment)
+decisions from the inputs, to speed up or warm-start the optimiser.
+
+\paragraph{Data.} The Tokke--Vinje watercourse has 17 reservoirs, 9 plants and 14 units
+(1{,}000\,MW). Each \emph{case} is a 168-hour week starting at 00:00 UTC; cases start every day, so
+consecutive cases overlap by 144 hours. There are 2{,}922 labelled cases (2015-01-01 to 2022-12-31)
+and 725 test cases (2023-01-01 to 2024-12-25). Inputs: hourly day-ahead price and inflows, daily
+reservoir volumes and synthetic water values, hourly minimum-volume and minimum-flow constraints,
+and the SHOP-ready topology file (reservoir volume--level curves, turbine and generator efficiency,
+start/stop costs, friction losses, rivers, tunnels and their connections).
+
+\paragraph{Metric.} Micro-averaged ROC-AUC over every (case, hour, unit) cell: 6.9M labelled cells,
+1.7M test cells. Because the metric pools all units, probabilities must be comparable across units
+as well as ordered within each unit-week.
+
+\paragraph{Deliverables.} \textit{Short notebook 1} reproduces the LP + LightGBM submission
+(Section~\ref{sec:r-lp}); \textit{Short notebook 2} reproduces the 0.98058 XGBoost submission
+(Section~\ref{sec:r-fe}). Both contain all code and run from the raw competition data.
+
+% =============================================================================================
+\section{Exploratory data analysis}
+\label{sec:r-eda}
+
+Four rounds of EDA (logs 002, 008, 009, 011) shaped every later decision. The findings that
+mattered most:
+
+\begin{itemize}
+\item \textbf{Units differ and co-move.} On-rates range from 26\% (Vinje G3) to 75\% (Lio G1).
+  Units at one plant correlate 0.8--0.96, and Tokke and Vinje correlate 0.8--0.9 with each other
+  because Vinje's discharge feeds the reservoir Tokke draws from (Figure~\ref{fig:r-eda}).
+\item \textbf{Absolute price misleads; relative price informs.} 2022 had the highest prices
+  ($\sim$211 EUR/MWh) and the lowest on-rate (0.34). Raw price correlates $-0.19$ with commitment,
+  the within-week z-score $+0.26$: SHOP reacts to whether an hour is good \emph{relative to the
+  week's outlook}.
+\item \textbf{The decision rule is economic.} The spread between price and the feeding reservoir's
+  water value beats either component for every unit, and the \emph{terminal} water value
+  (at the end of the week, the boundary condition of SHOP's objective) correlates $-0.41$ with
+  commitment against $-0.26$ for the initial one.
+\item \textbf{Identical siblings follow a merit order.} Tokke's four and Vinje's three units are
+  physically identical; one Tokke unit on is G1 99\% of the time, two are G1+G3 94\%. Penstock
+  sharing explains the G1$\to$G3 order.
+\item \textbf{Most unit-weeks are flat.} 58.8\% of unit-weeks are entirely on or off (Haukeli 81\%),
+  and commitments come in 1.2--2.7 contiguous blocks per week:
+  $P(\text{on}_t\mid\text{on}_{t-1})=0.995$.
+\item \textbf{Labels are partly a tie-break.} The same wall-clock hour, solved one day later, gets a
+  different decision 12\% of the time (18\% for Tokke/Vinje). This label self-disagreement explains
+  78\% of the variance in per-unit difficulty of our first baseline.
+\item \textbf{Regimes shift.} Haukeli's on-rate falls from 0.87 (2015) to 0.14 (2022); the 2021--22
+  energy crisis turns the average spread negative.
+\end{itemize}
+
+\begin{figure}[H]
+\centering
+\begin{subfigure}{0.49\linewidth}\includegraphics[width=\linewidth]{figures/eda_02_unit_correlation_heatmap.png}\end{subfigure}
+\begin{subfigure}{0.49\linewidth}\includegraphics[width=\linewidth]{figures/eda2_05_spread_vs_components.png}\end{subfigure}
+\caption{Left: correlation of units' daily on-fraction (blocks by plant; Tokke--Vinje coupled through
+the cascade). Right: the price $-$ water-value spread correlates with commitment more strongly than
+price or water value alone, for every unit. (Log 002, 008.)}
+\label{fig:r-eda}
+\end{figure}
+
+% =============================================================================================
+\section{Validation methodology}
+\label{sec:r-val}
+
+\paragraph{Random splits leak.} A random row split scores 0.957 with the same model that scores 0.835
+on a held-out year: rows from one week are near-duplicates, and consecutive weeks share 144 hours at
+88\% label agreement. Random \emph{case} splits still inflate by $+0.105$ (log 017). Every number in
+this report therefore comes from a temporal split.
+
+\paragraph{Walk-forward.} The reference protocol (logs 024, 028) has six half-year folds from 2020-H1
+to 2022-H2; each trains on every case starting before the fold and scores the six months after.
+Earlier stages used a single held-out year (2021, chosen as the most test-like year in log 020) or
+four-fold rolling-origin CV; we judged changes on the per-fold sign pattern, since fold-to-fold
+variation (SD up to 0.06) dwarfs most feature effects. A rotating-block scheme was built and
+rejected: training on both sides of the held-out block measures interpolation, while the test set
+requires extrapolation (log 035).
+
+\paragraph{Which period resembles the test set?} We measured this instead of assuming it: a
+classifier separates each half-year's cases from the 2023--24 test cases using case-level inputs
+(price level, volatility, negative-price share, water value, spread, fill, inflow). 2021-H2 is the
+hardest to separate (AUC 0.785), then 2022-H2 (0.879); every other half-year is above 0.95
+(Figure~\ref{fig:r-adv}). We report these two \emph{test-like folds} separately. The test period
+also contains negative prices in 2.2\% of hours, which the training data barely does.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.72\linewidth]{figures/physics_06_adversarial.png}
+\caption{Adversarial validation: how easily each half-year's cases are told apart from the test
+cases. Lower is more test-like; 0.5 would be indistinguishable.}
+\label{fig:r-adv}
+\end{figure}
+
+% =============================================================================================
+\section{Track A: feature engineering for gradient-boosted trees}
+\label{sec:r-fe}
+
+Track A ran from a raw-feature baseline to our first submission over 36 logged sessions
+(Appendix~\ref{app:log}). Table~\ref{tab:r-progress} lists the milestones; Table~\ref{tab:r-neg}
+the main negative results.
+
+\begin{table}[H]
+\centering\small
+\begin{tabular}{p{9.6cm}rl}
+\toprule
+step & micro-AUC & protocol \\
+\midrule
+14 independent XGBoost models, raw joined features & 0.647 & year 2022 \\
+one multi-output tree (shared splits across units) & 0.687 & year 2022 \\
+engineered features: spread $+0.075$, terminal water value $+0.034$ & 0.808 & 4-fold CV \\
+pruned to 15 economic features (beats all 299) & 0.816 & 4-fold CV \\
+\emph{oracle}: true hours-on per unit-week, allocated by spread rank & \emph{0.977} & year 2022 \\
+count model as a budget augmentation of the pointwise model & 0.855 & year 2022 \\
+water-balance (post-decision storage) features in the count model & 0.912 & year 2021 \\
+distilled count outputs as features (compact architecture) & 0.935 & walk-forward \\
+binned count head; hourly block structure & 0.944 & year 2021 \\
+long format: one row per (case, hour, unit) & 0.950 & year 2021 \\
+terminal water value read at start $+7$ days (documentation fix); tuning & 0.963 & year 2021 \\
+\textbf{submitted model} (count model used only to rank features) & \textbf{0.9638} & walk-forward \\
+\textbf{public leaderboard} & \textbf{0.98058} & test set \\
+\bottomrule
+\end{tabular}
+\caption{Track A milestones. Protocols changed as the project matured, so rows are comparable only
+within a protocol. Full table with all experiments: \texttt{report/leaderboard.md}.}
+\label{tab:r-progress}
+\end{table}
+
+\paragraph{From raw features to economics (logs 004--015).} Independent per-unit models scored
+0.647; one multi-output tree, letting correlated units share structure, 0.687. Twenty feature
+themes were then built and screened. Nearly the whole gain came from two economic quantities, the
+price $-$ water-value spread and the terminal water value; the strongest univariate correlate in
+the project (a seasonal storage percentile, $+0.54$) made the model \emph{worse}. Pruning by gain
+left 15 features, all economic, which beat the full 299.
+
+\paragraph{The structural insight (log 018).} Given the true number of hours each unit is on in a
+week, allocating them to the hours with the best spread already reaches 0.977. The hard part is
+therefore \emph{one number per unit-week}, not which hours. A count model over hours-on, used first
+as a logit augmentation and later distilled into features, carried the next $+0.10$.
+
+\paragraph{Post-decision information (log 022).} The largest single jump ($+0.078$) came from
+water-balance features built on the observed end-of-week storage. They are legal --- the volume file
+covers the test period --- but they read the result of real-world operation rather than forecasting
+it: without them the model scored 0.855. Track B removes this dependence.
+
+\paragraph{Corrections, not inventions (logs 031--036).} The last gains were fixes: a graph
+traversal that missed tunnel-fed plants ($+0.007$), the terminal water value read one day late
+($+0.006$), the long format that made per-unit count features affordable ($+0.006$), hourly block
+structure ($+0.003$), and \texttt{min\_child\_weight}$=500$ ($+0.002$; 6.9M rows but only
+$\sim$100k independent blocks). Twelve further additions failed in a row (Table~\ref{tab:r-neg}).
+
+\begin{table}[H]
+\centering\small
+\begin{tabular}{p{10cm}rl}
+\toprule
+rejected idea & effect & log \\
+\midrule
+expanding-window seasonal percentile (strongest univariate signal) & $-0.020$ & 013 \\
+``physics'' stage (heads, MWh per m\textsuperscript{3}) as features & $-0.012$ & 014 \\
+per-unit residual stage on top of the joint model & $+0.000$ & 016 \\
+predict the count, then allocate hours by spread (hard) & $-0.055$ & 018 \\
+corrected water balance for the four worst units & $-0.003$ & 027 \\
+narrower, unit-resolved count model & $-0.029$ & 030 \\
+one contiguous block per unit-week (oracle counts) & $-0.043$ & 031 \\
+per-unit calibration, even with oracle base rates & $-0.005$ & 031 \\
+67-year inflow climatology & $-0.000$ & 031 \\
+min-flow obligation per plant & $-0.003$ & 031 \\
+up-weighting the weakest unit (Lio) & $-0.001$ & 032 \\
+287 slope (rate-of-change) features & $-0.002$ & 035 \\
+full count distribution forwarded; hydraulic neighbour counts & $-0.001$ & 035 \\
+\bottomrule
+\end{tabular}
+\caption{Track A negative results (single-year or stride-3 protocols). Kept as evidence: they
+are why we concluded the feature set was saturated for that architecture.}
+\label{tab:r-neg}
+\end{table}
+
+\paragraph{The submitted model} (Short notebook 2): one binary XGBoost model on one row per
+(case, hour, unit), 6.87M rows and 207 features --- 15 pruned economic features, 35 terminal
+water-value features, 36 hourly-structure features, 141 per-unit count-table features (chosen by a
+6-class count model fitted only to rank them) and 5 static unit attributes; 600 rounds, depth 8,
+learning rate 0.05, \texttt{min\_child\_weight} 500. Walk-forward 0.9638, public leaderboard 0.98058.
+Lio (0.86) and Haukeli (0.92) remained weak, and predicted schedules switched 7.6 times a week
+against 3.0 in reality.
+
+% =============================================================================================
+\section{Track B: rebuild the optimiser, learn only its errors}
+\label{sec:r-lp}
+
+\subsection{Motivation}
+
+Track A approximated SHOP with features. But the labels are not noisy observations: they are the
+output of one deterministic optimiser, and every input it used is in our data --- the topology file
+is literally SHOP-ready. So we rebuilt the optimisation problem itself (\texttt{src/shoplite.py};
+Short notebook 1, Sections 1--4).
+
+\subsection{The model}
+
+One linear programme per case, the LP relaxation of SHOP's weekly unit-commitment problem, solved
+with HiGHS (dual simplex, $\sim$2\,s per case on one core; SHOP's own recorded solve times are a
+median 52\,s, mean 147\,s):
+\[
+\max\ \sum_t \lambda_t \big(P_t - L_t\big) \;-\; \text{start/stop costs} \;-\; \text{river, bypass, spill costs}
+\;-\; \text{penalties} \;+\; \sum_r \omega_r V_{r,T}
+\]
+subject to hourly water balance in all 17 reservoirs, the Vest-Vassdraget river junction and the
+Songa tunnel junction; reservoir bounds; minimum volume and minimum flow (soft, heavily penalised);
+for every unit an on/off variable $u\in[0,1]$ carrying the minimum block ($q_{\min}$, $p_{\min}$)
+plus segments of the concave envelope of its PQ curve at the case's initial head (turbine efficiency
+interpolated between the reference-head curves, times generator efficiency); start/stop variables
+with the topology's costs; and main-tunnel and shared-penstock friction $L_t$ as a convex
+piecewise-linear cubic in plant flow. $\lambda_t$ is the price and $\omega_r$ the terminal value of
+water (below). The LP's duals give the hourly shadow price of water in each reservoir, from which
+each unit's \emph{local water value} (EUR/MWh) and its margin, price $-$ local water value, follow.
+
+Simplifications against SHOP, each a place the replica can disagree with the labels: heads frozen at
+their initial levels (SHOP iterates), lossless tunnels between reservoirs, and an unknown initial
+on/off state (we checked whether it chains from the previous case: hour 0 agrees with the previous
+case's hour 24 only 80--96\% of the time, no more than overlapping cases agree in general).
+
+\subsection{Three conventions measured from the labels}
+
+The documentation does not say how SHOP turned the EUR/MWh water values into the value of a cubic
+metre, how the river cost curves are read, or how identical units are ordered. Each was decided by
+measurement:
+
+\textbf{Terminal water value.} In weeks where a unit switches, its on-hour and off-hour prices
+bracket the threshold SHOP used. Regressing that implied threshold on terminal water values gives
+$\approx 1.0\times$ the feeding reservoir's value and $\approx 0\times$ the downstream value
+(Figure~\ref{fig:r-thr}; Byrte slope 0.98, $R^2$ 0.99). The textbook conversion --- EUR/MWh times the
+full-cascade energy-conversion factor --- predicts a large negative downstream coefficient and is
+refuted. The convention that reproduces the labels values one Mm\textsuperscript{3} in reservoir
+$r$ as $\omega_r=\sum_k \mathrm{WV}(\text{reservoir feeding }k)\cdot \mathrm{conv}_k$ over the
+plants $k$ on its way to the sea, so each plant breaks even exactly at its own reservoir's value.
+
+\textbf{River flow cost.} Reading \texttt{flow\_cost\_curve} as a marginal cost per
+(m\textsuperscript{3}/s$\cdot$h) charged Kjela's discharge 33 EUR on its way through
+\texttt{r\_Hyljelihyl} --- the LP duals showed exactly that gap. Read as total cost per hour (marginal
+cost = slope), Kjela's raw AUC rose from 0.70 to 0.96 and Haukeli's from 0.93 to 0.99.
+
+\textbf{Sibling order.} The merit order measured in EDA, stable in every year, is imposed as
+$u_{\text{G1}}\ge u_{\text{G3}}\ge u_{\text{G4}}\ge u_{\text{G2}}$ at Tokke and
+$u_{\text{G1}}\ge u_{\text{G2}}\ge u_{\text{G3}}$ at Vinje: ``which unit'' becomes ``how many''.
+
+On a 59-case sample across all years the raw LP's micro-AUC went 0.937 $\to$ 0.963 (river cost)
+$\to$ 0.967 (sibling order), with no training data.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{figures/physics_01_threshold_vs_water_value.png}
+\caption{Implied price threshold in every mixed week against the terminal water value of the
+reservoir feeding the plant. Points lie on $y=x$: each plant breaks even at its own reservoir's
+water value, whatever the downstream values are.}
+\label{fig:r-thr}
+\end{figure}
+
+\paragraph{The MILP is a worse feature than the LP.} Solving with binary $u$ scored 0.941 against the
+LP's 0.967 on the same sample: a 0/1 schedule loses the graded information about how close each hour
+is to the margin, and a small model error flips a whole block. It also exposed a genuine gap: SHOP
+keeps Lio on all week to meet the Vest-Vassdraget minimum flow even when price is below its
+reservoir's water value, while our MILP pulses Lio and bypasses Vinjevatn instead. Gaps like this are
+what the learned layer corrects.
+
+\subsection{The learned correction}
+
+LightGBM on one row per (case, hour, unit), 61 features (Short notebook 1, Section 5):
+\texttt{lp\_} --- the LP solution (commitment, power, flow), its temporal context (rolling windows,
+run lengths, weekly and daily means, plant-level number of units on), the local water value and
+margin, and the reservoir trajectories; \texttt{ec\_} --- price level, rank and z-score within the
+week, spread to the terminal water value, season, inflow; \texttt{cn\_} --- the constraint series;
+\texttt{st\_} --- the observed storage trajectory; \texttt{s\_} --- unit identity and static
+attributes. 600 rounds, learning rate 0.05, 127 leaves, \texttt{min\_data\_in\_leaf} 500.
+
+\subsection{Results}
+
+Both tracks were run on the same six walk-forward folds on the same machine, each training on
+every third case (the project's experiment convention); the submitted XGBoost model re-run this way
+reproduces its recorded 0.9638 to within 0.002.
+
+\begin{table}[H]
+\centering\small
+\begin{tabular}{lrrrr}
+\toprule
+fold & XGBoost (Track A) & raw LP, no learning & LP + LightGBM & $\Delta$ \\
+\midrule
+2020-H1 & 0.9535 & 0.9720 & \textbf{0.9925} & $+0.039$ \\
+2020-H2 & 0.9455 & 0.9671 & \textbf{0.9866} & $+0.041$ \\
+2021-H1 & 0.9765 & 0.9787 & \textbf{0.9950} & $+0.019$ \\
+2021-H2 (test-like) & 0.9504 & 0.9695 & \textbf{0.9914} & $+0.041$ \\
+2022-H1 & 0.9672 & 0.9586 & \textbf{0.9862} & $+0.019$ \\
+2022-H2 (test-like) & 0.9784 & 0.9802 & \textbf{0.9953} & $+0.017$ \\
+\midrule
+mean (SD) & 0.9619 (0.014) & 0.9710 (0.008) & \textbf{0.9912 (0.004)} & $+0.029$ \\
+\bottomrule
+\end{tabular}
+\caption{Walk-forward micro ROC-AUC.}
+\label{tab:r-wf}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\linewidth]{figures/physics_02_walkforward.png}
+\caption{Walk-forward results per fold. The raw optimiser, which uses no labels, beats the trained
+XGBoost model on five of six folds.}
+\label{fig:r-wf}
+\end{figure}
+
+Every fold and every unit improves (Figure~\ref{fig:r-unit}); the two units Track A never fixed move
+most (Lio 0.864 $\to$ 0.979, Haukeli 0.920 $\to$ 0.973), and the fold SD falls from 0.014 to 0.004.
+Trained on all 2{,}922 cases, the model scores \kagglelp{} on the public leaderboard.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.75\linewidth]{figures/physics_03_per_unit.png}
+\caption{Per-unit ROC-AUC, mean over the six folds, Track A (orange) and Track B (blue).}
+\label{fig:r-unit}
+\end{figure}
+
+% =============================================================================================
+\section{Model interpretation}
+\label{sec:r-interp}
+
+\subsection{Track A: what the trees learned}
+
+The pruned 15 features are all economic quantities --- spreads, margins, break-even hours, the
+share of capacity a spread justifies --- with topology used only to pick \emph{which} water value
+and \emph{which} capacity; no raw price, storage, inflow or calendar column survived (log 017). The
+single most important feature of the early model, by a factor of 14, was the binary
+``price $>$ system water value'': SHOP's dispatch condition, rediscovered
+(Figure~\ref{fig:r-imp-a}). In the count model the top feature was the system storage change over
+the week --- released water, i.e.\ production --- and the binding-constraint term
+$\min(\text{hours of water}, \text{hours profitable})$ (logs 021--022). Hourly-varying features
+held 96\% of the gain: micro-AUC rewards ranking hours \emph{within} a week, which a case-level
+constant cannot do (log 013).
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.62\linewidth]{figures/iter1_02_feature_importance.png}
+\caption{Track A, first feature iteration: gain importance. The binary spread sign --- SHOP's own
+dispatch condition --- dominates. (Log 013.)}
+\label{fig:r-imp-a}
+\end{figure}
+
+\subsection{Track B: the model leans on the optimiser}
+
+\paragraph{Ablation.} Removing one feature group at a time on the same folds
+(Figure~\ref{fig:r-abl}): without the LP features the same learner scores 0.9483 --- \emph{below}
+Track A --- so the gain is neither LightGBM nor the feature engineering. The LP features plus unit
+identity alone reach 0.9897. Removing the observed storage trajectory changes nothing (0.9910 vs
+0.9912): the model uses only information available before the week starts, unlike Track A's best
+features.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.72\linewidth]{figures/physics_04_ablation.png}
+\caption{Ablation: mean walk-forward micro-AUC with one feature group removed.}
+\label{fig:r-abl}
+\end{figure}
+
+\paragraph{Importance.} The LP commitment and flow alone carry 71\% of the split gain, LP features
+86\% in total (Figure~\ref{fig:r-gain}). Unit identity (5\%) is how the model learns per-unit
+corrections --- e.g.\ that SHOP runs Lio harder than our LP does.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.62\linewidth]{figures/physics_05_gain_importance.png}
+\caption{LP + LightGBM: share of split gain, top 20 features (last walk-forward fold).}
+\label{fig:r-gain}
+\end{figure}
+
+% CONTRIBUTIONS
+
+\paragraph{The optimiser itself is interpretable.} Its decisions are explained by quantities with
+physical meaning: each unit runs when the price exceeds its local water value, which equals its
+reservoir's terminal water value unless a constraint binds --- a full reservoir lowers it (water
+would otherwise spill), a minimum-flow obligation can force a unit on below it, an empty reservoir
+raises it. The three conventions of Section~\ref{sec:r-lp} are themselves findings about how the
+labels were produced.
+
+% =============================================================================================
+\section{Discussion}
+\label{sec:r-disc}
+
+\paragraph{Why Track B works.} Track A spent most of its effort recovering, through features, a
+decision process that is written down: the spread is the dispatch condition, the count is the
+weekly water budget, the block structure comes from start costs, the merit order from penstocks.
+Solving the actual problem gets all of these at once, consistently across units and reservoirs,
+and extrapolates to unseen price regimes (negative prices, the post-crisis level) from physics
+rather than from training data. The learner is left with a smaller, more stationary job: the
+residual between our simplified replica and SHOP.
+
+\paragraph{Relation to the task's purpose.} InterOpt wants ML to speed up the optimiser. Our best
+model still solves an LP, but one $\sim$25--70$\times$ cheaper than SHOP, and its output is a
+calibrated commitment probability that could warm-start SHOP's MIP. Unlike Track A's best
+features, it needs no post-decision information.
+
+\paragraph{Limitations and next steps.} The remaining errors are fidelity gaps of the replica: heads
+frozen at their initial level, Lio's min-flow behaviour, weeks where SHOP runs units below their
+water value (e.g.\ 2019-07-09), and degenerate weeks where a reservoir must fill and the timing of
+release is arbitrary. Each fix to the replica feeds the learned layer directly. Three conventions
+were read off label statistics that include the validation years; they are structural and stable
+across years, but the protocol is not blind to them.
+
+\paragraph{What we would do differently.} Read the topology file on day one. Track A's three
+largest late gains were corrections found by reading the documentation; Track B is the same lesson
+taken to its conclusion.
+
+% =============================================================================================
+\appendix
+\section{Reproducibility}
+
+\begin{itemize}
+\item \textbf{Short notebook 1} (LP + LightGBM): solves the 3{,}647 LPs in parallel ($\sim$1.6\,h on 4
+  cores, cached after the first run), builds features, trains on all labelled cases and writes the
+  submission ($\sim$10\,min, $\sim$6\,GB RAM). Verified to reproduce the uploaded file to $2\cdot
+  10^{-13}$; the notebook's LP code reproduces the stored solutions bit for bit.
+\item \textbf{Short notebook 2} (XGBoost): builds the hourly table from the raw files, the feature
+  stages, the count table and model, the hourly structure and the long format, and trains on all
+  labelled cases ($\sim$1\,h, $\sim$14\,GB RAM). The long design matrix is assembled in place instead
+  of through pandas concatenations; it is verified identical to the original assembly, value for
+  value.
+\item Source modules, every experiment and its result: \texttt{src/}, \texttt{report/leaderboard.md},
+  \texttt{report/runs/}.
+\end{itemize}
+
+\section{Full lab log}
+\label{app:log}
+
+The chronological record of every session, including all experiments and negative results, exactly
+as written during the project.
+\sloppy
+
+\renewcommand{\thesubsection}{B.\arabic{subsection}}
+\input{log/001_problem_and_data_overview}
+\input{log/002_eda_findings}
+\input{log/003_centralized_modeling_table}
+\input{log/004_baseline_xgboost}
+\input{log/005_next_steps_discussion}
+\input{log/006_multioutput_tree_baseline}
+\input{log/007_capacity_sweep}
+\input{log/008_eda_round2}
+\input{log/009_eda_round3}
+\input{log/011_eda_round3b_temporal}
+\input{log/012_feature_themes}
+\input{log/013_feature_iteration_round1}
+\input{log/014_feature_iteration_round2}
+\input{log/015_pruning}
+\input{log/016_stacked_two_stage}
+\input{log/017_state_of_the_model}
+\input{log/018_structural_oracle}
+\input{log/019_budget_augmentation}
+\input{log/020_robustness}
+\input{log/021_count_features}
+\input{log/022_production_features}
+\input{log/023_unit_relative}
+\input{log/024_walkforward}
+\input{log/025_orthogonal_traces}
+\input{log/026_compact_architecture}
+\input{log/027_v2_rejected}
+\input{log/028_walkforward_v2}
+\input{log/029_structural_diagnosis}
+\input{log/030_abcd_ablation}
+\input{log/031_temporal_structure}
+\input{log/032_longform}
+\input{log/033_documentation}
+\input{log/034_tuning}
+\input{log/035_negative_results}
+\input{log/036_submission}
+\input{log/037_first_principles_optimiser}
+\input{log/010_validation_harness_and_backlog}
+
+\end{document}

@@ -10,3 +10,7 @@ sintef_project/data/processed/train_hourly_features.parquet
 # shoplite optimiser checkpoints (src/shoplite_batch.py). The merged tables
 # shoplite_<mode>_{unit,case}.parquet are committed: they take ~1.6h of solver time to rebuild.
 sintef_project/data/processed/shoplite_*_parts/
+
+# Outputs of running the deliverable notebooks in place (regenerable)
+sintef_project/deliverables/lp_cache/
+sintef_project/deliverables/submission_*.csv
