@@ -60,8 +60,10 @@ start/stop costs, friction losses, rivers, tunnels and their connections).
 as well as ordered within each unit-week.
 
 \paragraph{Deliverables.} \textit{Short notebook 1} reproduces the LP + LightGBM submission
-(Section~\ref{sec:r-lp}); \textit{Short notebook 2} reproduces the 0.98058 XGBoost submission
-(Section~\ref{sec:r-fe}). Both contain all code and run from the raw competition data.
+(Section~\ref{sec:r-lp}); \textit{Short notebook 2} re-runs the pipeline of the 0.98058 XGBoost
+submission (Section~\ref{sec:r-fe}), which on our machine reproduces the uploaded file closely but
+not bit for bit (Appendix~\ref{app:repro}). Both contain all code and run from the raw competition
+data.
 
 % =============================================================================================
 \section{Exploratory data analysis}
@@ -504,6 +506,7 @@ taken to its conclusion.
 % =============================================================================================
 \appendix
 \section{Reproducibility}
+\label{app:repro}
 
 \begin{itemize}
 \item \textbf{Short notebook 1} (LP + LightGBM): solves the 3{,}647 LPs in parallel ($\sim$1.6\,h on 4
