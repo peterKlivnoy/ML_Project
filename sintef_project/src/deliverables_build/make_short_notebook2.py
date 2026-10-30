@@ -104,6 +104,8 @@ submit_src = sub(submit_src, old_block, """    L_run, L_hour, L_unit, Xtr, ytr, 
         tr, units, shared, stat, ctx, keep, stride)
     print(f"long: train {Xtr.shape[0]:,} rows, {len(cols)} features | {time.time()-t0:.0f}s",
           flush=True)
+    del tr, hs_tr                                 # not used again; frees ~1.7 GB before the peak
+    gc.collect()
     dtr = QuantileDMatrix(Xtr, label=ytr, feature_names=cols, feature_types=ftypes,
                           enable_categorical=True, max_bin=POINT_PARAMS["max_bin"])
     del Xtr, L_run, L_hour, L_unit
@@ -190,10 +192,21 @@ competition data. It is the end point of the feature-engineering track described
 5. **Long format + XGBoost** — 600 rounds, depth 8, `min_child_weight=500`, on all 2,922
    labelled cases; predict the 725 test cases.
 
-**Resources.** Full resolution trains on 6.87M rows × 207 features: about 1 hour and **~14 GB
-RAM** on a 4-core machine. Set `STRIDE = 3` for a quick run on every third case.
+**Resources.** Full resolution trains on 6.87M rows × ~207 features. On a 4-core machine it
+takes about 45 minutes and peaks at **~20 GB of memory** while XGBoost quantises the training
+matrix (a 16 GB machine needs swap; macOS adds it automatically). `STRIDE = 3` trains on every
+third case for a quicker, lighter run.
 
-**Requirements:** `numpy pandas pyarrow pyyaml scikit-learn xgboost` (xgboost 3.4.1)."""),
+**Requirements:** the versions the uploaded file was produced with: `numpy==2.2.6 pandas==2.3.2
+pyarrow==23.0.1 xgboost==3.4.1 scikit-learn==1.7.2 PyYAML==6.0.3`.
+
+**Reproducibility.** The uploaded file was produced on an Apple Silicon Mac. On a 4-core x86 Linux
+machine with the same package versions this notebook selects 143 count-table features instead of
+141, so the final model differs slightly: its predictions correlate 0.995 with the uploaded file
+and fall on the same side of 0.5 in 98% of cells. The difference is not the thread count (4 and 8
+threads select identical features); we attribute it to platform-level floating-point differences in
+XGBoost's histogram sums, which reorder near-tied features in the count model's importance ranking.
+The last cell compares the result with the uploaded file when `submission.csv` is present."""),
     code('''from __future__ import annotations
 
 import gc
@@ -244,8 +257,11 @@ print(f"done in {time.time() - t0:.0f}s")'''),
 ref_path = ROOT / "submission.csv"
 if ref_path.exists() and STRIDE == 1:
     ref = pd.read_csv(ref_path).set_index("Run No").loc[submission["Run No"]]
-    diff = np.abs(submission.drop(columns="Run No").to_numpy() - ref.to_numpy())
-    print(f"max |difference| to the uploaded submission: {diff.max():.2e}")'''),
+    a = submission.drop(columns="Run No").to_numpy().ravel()
+    b = ref.to_numpy().ravel()
+    print(f"max |difference| to the uploaded submission: {np.abs(a - b).max():.2e}")
+    print(f"correlation {np.corrcoef(a, b)[0, 1]:.4f}; "
+          f"same side of 0.5 in {((a > 0.5) == (b > 0.5)).mean():.1%} of cells")'''),
 ]
 
 nb = nbf.v4.new_notebook()
