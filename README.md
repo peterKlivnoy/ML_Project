@@ -30,7 +30,7 @@ extracted `sintef_project/` folder (or next to it) and run it top to bottom.
 The labels are the output of one deterministic optimiser (SHOP) whose inputs we have in full, so
 instead of learning inputs -> commitment from scratch, [`src/shoplite.py`](sintef_project/src/shoplite.py)
 rebuilds the weekly problem SHOP solved from the SHOP-ready topology YAML and solves it per case
-with HiGHS (LP, ~2 s/case). A LightGBM model then learns only where our replica disagrees with SHOP.
+with HiGHS (LP, ~8 s/case on one core on average, 2–25 s). A LightGBM model then learns only where our replica disagrees with SHOP.
 
 | walk-forward, 6 half-year folds, stride 3 | mean micro-AUC | SD | test-like folds (2021-H2, 2022-H2) |
 |---|---|---|---|

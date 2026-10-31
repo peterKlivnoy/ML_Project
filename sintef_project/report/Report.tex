@@ -244,8 +244,8 @@ Short notebook 1, Sections 1--4).
 \subsection{The model}
 
 One linear programme per case, the LP relaxation of SHOP's weekly unit-commitment problem, solved
-with HiGHS (dual simplex, $\sim$2\,s per case on one core; SHOP's own recorded solve times are a
-median 52\,s, mean 147\,s):
+with HiGHS (dual simplex; building and solving take 8\,s per case on one core on average, 2--25\,s
+for individual cases; SHOP's own recorded solve times are a median 52\,s, mean 147\,s):
 \[
 \max\ \sum_t \lambda_t \big(P_t - L_t\big) \;-\; \text{start/stop costs} \;-\; \text{river, bypass, spill costs}
 \;-\; \text{penalties} \;+\; \sum_r \omega_r V_{r,T}
@@ -488,7 +488,7 @@ rather than from training data. The learner is left with a smaller, more station
 residual between our simplified replica and SHOP.
 
 \paragraph{Relation to the task's purpose.} InterOpt wants ML to speed up the optimiser. Our best
-model still solves an LP, but one $\sim$25--70$\times$ cheaper than SHOP, and its output is a
+model still solves an LP, but one roughly 6--18$\times$ cheaper than SHOP's recorded solve times, and its output is a
 calibrated commitment probability that could warm-start SHOP's MIP. Unlike Track A's best
 features, it needs no post-decision information.
 

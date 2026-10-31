@@ -13,8 +13,9 @@ features, rebuild the problem it solved and solve it ourselves.
 
 \subsubsection*{What we built: \texttt{src/shoplite.py}}
 
-One linear programme per case, solved with HiGHS (simplex, $\sim$2\,s per case on one core;
-SHOP's own recorded solve times are median 52\,s, mean 147\,s):
+One linear programme per case, solved with HiGHS (simplex; building and solving take 8\,s per case
+on one core on average over all 3{,}647 cases, 2--25\,s for individual cases; SHOP's own recorded
+solve times are median 52\,s, mean 147\,s):
 
 \begin{center}\small
 \begin{tabular}{lp{11.5cm}}

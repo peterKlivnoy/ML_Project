@@ -159,7 +159,7 @@ map from scratch we
 1. **rebuild the weekly optimisation problem SHOP solves** from `Tokke_Vinje_topology.yaml` —
    water balance over 17 reservoirs, rivers and tunnels, turbine/generator efficiency, friction
    losses, start/stop costs, min-flow and min-volume constraints, terminal water value — and solve
-   its LP relaxation for every case with HiGHS (~2 s per case);
+   its LP relaxation for every case with HiGHS (~8 s per case on one core on average);
 2. turn the solution (commitment, power, flow, local water value from the duals, reservoir
    trajectories) plus a few input features into one row per (case, hour, unit);
 3. fit **one LightGBM model** on all 2,922 labelled cases and predict the 725 test cases.
