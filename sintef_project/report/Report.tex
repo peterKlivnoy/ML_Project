@@ -509,10 +509,11 @@ taken to its conclusion.
 \label{app:repro}
 
 \begin{itemize}
-\item \textbf{Short notebook 1} (LP + LightGBM): solves the 3{,}647 LPs in parallel ($\sim$1.6\,h on 4
+\item \textbf{Short notebook 1} (LP + LightGBM): solves the 3{,}647 LPs in parallel ($\sim$2\,h on 4
   cores, cached after the first run), builds features, trains on all labelled cases and writes the
-  submission ($\sim$10\,min, $\sim$6\,GB RAM). Verified to reproduce the uploaded file to $2\cdot
-  10^{-13}$; the notebook's LP code reproduces the stored solutions bit for bit.
+  submission ($\sim$6\,min, peak $\sim$5\,GB RAM). Executed end to end from the raw data, it
+  reproduces the uploaded file to $2\cdot 10^{-13}$, and its LP solutions are byte-identical to the
+  stored ones.
 \item \textbf{Short notebook 2} (XGBoost): builds the hourly table from the raw files, the feature
   stages, the count table and model, the hourly structure and the long format, and trains on all
   labelled cases (about 40\,min on 4 cores; peak $\sim$24\,GB of memory including swap). The long design matrix is assembled in place instead of through

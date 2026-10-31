@@ -167,8 +167,8 @@ map from scratch we
 Walk-forward validation (six half-year folds, 2020–2022): **0.9912** micro-AUC, against 0.9619 for
 our previous XGBoost model on the same folds. Details and interpretation are in the report.
 
-**Runtime** on a 4-core laptop: ~1.6 h for the 3,647 LPs (cached to `lp_cache/` after the first
-run), ~10 min for features and training. Peak memory ~6 GB.
+**Runtime** on a 4-core machine: ~2 h for the 3,647 LPs (cached to `lp_cache/` after the first
+run), ~6 min for features and training. Peak memory ~5 GB.
 
 **Requirements:** `numpy pandas pyarrow pyyaml scipy highspy lightgbm joblib`
 (developed with highspy 1.15.1, lightgbm 4.7.0, pandas 3.0, Python 3.13)."""),
