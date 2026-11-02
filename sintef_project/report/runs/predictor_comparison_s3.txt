@@ -7,3 +7,4 @@
   2020-07  XGBoost              micro 0.9869  (103s)
   2020-07  LightGBM             micro 0.9866  (64s)
   2021-01  logistic regression  micro 0.9906  (64s)
+  2021-01  random forest        micro 0.9939  (270s)
