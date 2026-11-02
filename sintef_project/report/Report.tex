@@ -24,17 +24,20 @@ Kaggle team: \kaggleteam}
 \begin{abstract}
 We predict, for every hour of a one-week scheduling case and each of the 14 generating units of the
 Tokke--Vinje hydropower system, the probability that SINTEF's SHOP optimiser commits the unit. The
-work followed two tracks. The first engineered features for gradient-boosted trees: economic
-spreads between price and water value, terminal water values, a count model over hours-on per
-unit-week, hourly block structure and a long (case, hour, unit) format. It reached 0.9638 micro
-ROC-AUC in walk-forward validation and \textbf{0.98058} on the public leaderboard. The second track
-starts from the observation that the labels are the output of a known optimisation problem whose
-inputs we hold in full: we rebuilt SHOP's weekly problem from the SHOP-ready topology file as a
-linear programme and use its solution \emph{only as features} for a learned model. With LightGBM on
-top it scores 0.9912 in walk-forward validation, improves every fold and all 14 units over the first
-track, and scores \kagglelp{} on the public leaderboard. Four predictor types compared on identical
-features (logistic regression, random forest, XGBoost, LightGBM) show that the gain comes from the
-optimiser features rather than from the learner.
+work followed three tracks. \emph{Track A} engineered features for gradient-boosted trees ---
+economic spreads between price and water value, terminal water values, a count model over hours-on
+per unit-week, hourly block structure, a long (case, hour, unit) format --- reaching 0.9638 micro
+ROC-AUC in walk-forward validation and 0.98058 on the public leaderboard. \emph{Track B} starts from
+the observation that the labels are the output of a known optimisation problem whose inputs we hold
+in full: we rebuilt SHOP's weekly problem as a linear programme from the SHOP-ready topology file and
+use its solution \emph{only as features} for LightGBM, which scores 0.9912 in walk-forward
+validation, improving every fold and all 14 units over Track A, and \kagglelp{} on the public
+leaderboard. \emph{Track C} trains a sequence neural network --- temporal convolution, a
+bidirectional GRU along each unit's week and attention across units --- on 83 base features and 16
+closed-form physics features derived from the generator efficiency curves, with no solver; it scores
+\textbf{0.99013} on the public leaderboard. Tracks B and C are our two selected predictions. Four
+predictor types compared on identical features show that Track B's gain comes from the optimiser
+features rather than from the learner.
 \end{abstract}
 
 \section*{Where to find the graded parts}
@@ -51,10 +54,10 @@ names, student IDs, Kaggle team & title block above; first cell of both short no
   individual features (\ref{sec:eda-individual}), explore pairs and groups of features
   (\ref{sec:eda-pairs}), clean up features (\ref{sec:eda-clean}) \\
 \textbf{feature engineering} & Section~\ref{sec:r-fe}: feature extraction (\ref{sec:fe-econ},
-  \ref{sec:fe-lp}) and feature selection (\ref{sec:fe-select}) \\
+  \ref{sec:fe-lp}, \ref{sec:fe-phys}) and feature selection (\ref{sec:fe-select}) \\
 \textbf{two or more types of predictors} & Section~\ref{sec:r-pred}: logistic regression, random
-  forest, XGBoost and LightGBM on identical features and folds (\ref{sec:pred-types}); every model we
-  trained, helpful or not (\ref{sec:pred-all}) \\
+  forest, XGBoost and LightGBM on identical features and folds (\ref{sec:pred-types}); a sequence
+  neural network (\ref{sec:pred-nn}); every model we trained, helpful or not (\ref{sec:pred-all}) \\
 \textbf{model interpretation} & Section~\ref{sec:r-interp}: gain importance, TreeSHAP contributions,
   ablation, calibration of the LP feature, one week explained \\
 hyperparameter values in the notebooks & Section~\ref{sec:r-hyper}: every value and how it was
@@ -109,11 +112,13 @@ file & resolution, coverage & content \\
 \label{tab:r-data}
 \end{table}
 
-\paragraph{Two tracks.} The work ran in two tracks, and the report follows both through every
-section. \emph{Track A} (logs 001--036) engineered features for gradient-boosted trees and produced
-our first submission (0.98058). \emph{Track B} (log 037) rebuilt the optimisation problem that
-generated the labels as a linear programme and uses its solution as features for LightGBM; it is our
-best submission.
+\paragraph{Three tracks.} The work ran in three tracks, and the report follows them through every
+section. \emph{Track A} (Peter Klivnoy; logs 001--036) engineered features for gradient-boosted trees
+and produced our first submission (0.98058). \emph{Track B} (Peter Klivnoy; log 037) rebuilt the
+optimisation problem that generated the labels as a linear programme and uses its solution as
+features for LightGBM. \emph{Track C} (Anders Bærheim) built closed-form physics features from the
+generator curves and a sequence neural network over each case. Tracks B and C are the two selected
+predictions (Short notebooks 1 and 2).
 
 % =============================================================================================
 \section{Exploratory data analysis}
@@ -471,8 +476,8 @@ both sides of the held-out block measures interpolation, while the test set requ
 \label{sec:r-fe}
 
 We used both kinds of feature engineering the course names: \emph{feature extraction} (new features
-built from the raw series, Sections~\ref{sec:fe-econ} and~\ref{sec:fe-lp}) and \emph{feature
-selection} (Section~\ref{sec:fe-select}).
+built from the raw series, Sections~\ref{sec:fe-econ}, \ref{sec:fe-lp} and~\ref{sec:fe-phys}) and
+\emph{feature selection} (Section~\ref{sec:fe-select}).
 
 % ---------------------------------------------------------------------------------------------
 \subsection{Feature extraction I: economic and structural features (Track A)}
@@ -599,6 +604,55 @@ constraint series; \texttt{st\_} --- the observed storage trajectory; \texttt{s\
 and static attributes.
 
 % ---------------------------------------------------------------------------------------------
+\subsection{Feature extraction III: closed-form physics features for a neural network (Track C)}
+\label{sec:fe-phys}
+
+Track C builds 99 features per (case, unit, hour) for a sequence model (Short notebook 2). The 83
+base features follow the same EDA findings as Track A:
+
+\begin{table}[H]
+\centering\small
+\begin{tabularx}{\linewidth}{lrX}
+\toprule
+group & $n$ & content \\
+\midrule
+economic core & 9 & margin = price $-$ terminal water value of the intake reservoirs; at the initial value; share of positive hours; daily and rolling (12\,h, 24\,h min/max) views \\
+price & 18 & level, within-week z-score and rank, within-day rank and position, daily spread, rolling means, lags and leads of 1/3/6\,h, price minus the mean of the remaining hours \\
+water value & 9 & intake and downstream values, change over the week, daily path and its volatility, a margin against the whole cascade's water value \\
+state & 9 & fill of the intake, storage and downstream reservoirs, system fill, five large reservoirs \\
+inflow & 5 & weekly inflow to the plant's storage, relative to its size, system inflow, its anomaly against the 1958--2014 climatology, hourly system inflow \\
+constraints & 9 & minimum flow on six rivers; distance of three reservoirs to their minimum volume \\
+volume path & 8 & observed storage changes over the week and implied releases (post-decision information) \\
+unit & 8 & identity, $p_{\min}$, $p_{\max}$, start cost, position in the plant, number of siblings, head, hour index \\
+calendar & 5 & local hour and weekday, season, Norwegian holidays \\
+plant context & 3 & system-mean margin, the unit's margin relative to it, rank across units \\
+\bottomrule
+\end{tabularx}
+\caption{Track C base features.}
+\end{table}
+
+\paragraph{Physics features without a solver.} Sixteen features are derived in closed form from each
+generator's efficiency curves at the plant head (minus friction losses, times generator efficiency,
+reduced to a concave envelope):
+\begin{itemize}
+\item \textbf{break-even prices} at minimum, full and marginal load --- the intake water value scaled
+  by how much less efficient that operating point is than the plant's best one --- and the margins of
+  price over them;
+\item a \textbf{weekly water budget}: hours of full-plant flow the reservoirs feeding the plant can
+  afford (storage above the minimum volume plus inflow), and hours it is \emph{forced} to run because
+  the intake would otherwise overflow;
+\item a \textbf{greedy schedule}: the plant runs in its $k$ best-margin hours, $k$ the number of
+  positive-margin hours clipped between the forced and affordable hours; whether each hour is in it
+  and how far from the cut-off;
+\item \textbf{block economics}: for each run of positive-margin hours, its length and profit at full
+  load against the start cost, and for each negative run, whether idling at $p_{\min}$ is cheaper than
+  stopping and restarting.
+\end{itemize}
+These approximate, hour by hour, what Track B's LP computes jointly. They add $+0.004$ to the yearly
+cross-validated AUC of the network (0.9697 $\to$ 0.9740), most of it on 2021 (0.9514 $\to$ 0.9658),
+the most test-like year (Section~\ref{sec:eda-shift}).
+
+% ---------------------------------------------------------------------------------------------
 \subsection{Feature selection}
 \label{sec:fe-select}
 
@@ -654,14 +708,15 @@ starts. Without the LP features the same learner falls to 0.9483.
 \centering\small
 \begin{tabularx}{\linewidth}{Xcc}
 \toprule
-input & notebook 1: LP + LightGBM & notebook 2: XGBoost \\
+input & notebook 1: LP + LightGBM & notebook 2: neural network \\
 \midrule
 price (hourly) & \checkmark & \checkmark \\
-inflow (hourly) & \checkmark & \checkmark \\
+inflow (hourly) & \checkmark & \checkmark\ (and its 1958--2014 climatology) \\
 storage (daily) & \checkmark & \checkmark \\
-water value, initial and terminal (daily) & \checkmark & \checkmark \\
+water value, initial and terminal (daily) & \checkmark & \checkmark\ (and the daily path) \\
 minimum volume, minimum flow (extended) & \checkmark & \checkmark \\
-topology and system configuration (extended) & \checkmark\ (the full LP) & \checkmark\ (graph, capacities) \\
+topology and system configuration (extended) & \checkmark\ (the full LP) & \checkmark\ (efficiency curves, heads, costs) \\
+calendar & season & local hour, weekday, season, holidays \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -735,13 +790,19 @@ log & model & protocol & AUC & verdict \\
 036 & \textbf{submission 1} on the public leaderboard & test set & \textbf{0.98058} & \\
 037 & MILP relaxation's schedule as a feature (59 cases) & sample & 0.941 & rejected \\
 037 & LP relaxation's commitment feature alone, no learning & walk-forward & 0.9710 & diagnostic \\
-037 & \textbf{LightGBM on LP features (submission 2)} & walk-forward & \textbf{0.9912} & submitted \\
+037 & \textbf{LightGBM on LP features (submission 2)} & walk-forward & \textbf{0.9912} & selected \\
 037 & LightGBM on LP features, no storage trace / LP only & walk-forward & 0.9910 / 0.9897 & ablation \\
 037 & LightGBM without the LP features & walk-forward & 0.9483 & ablation \\
+C & UCNet on the 83 base features & yearly CV & 0.9697 & superseded \\
+C & LightGBM on the 99 base $+$ physics features & yearly CV & 0.9722 & rejected \\
+C & \textbf{UCNet on base $+$ physics features (submission 3)} & yearly CV & \textbf{0.9740} & submitted \\
+C & \textbf{submission 3} on the public leaderboard & test set & \textbf{0.99013} & selected \\
 \bottomrule
 \end{tabularx}
-\caption{All models, in the order they were trained. ``Year 2022'' and ``year 2021'' hold out one
-year; 4-fold CV is rolling-origin; walk-forward is six half-year folds.}
+\caption{All models, in the order they were trained (``C'': Track C, documented in its own
+specification rather than the lab log). ``Year 2022'' and ``year 2021'' hold out one year; 4-fold CV
+is rolling-origin; walk-forward is six half-year folds; yearly CV is Track C's expanding window
+(2019--2022).}
 \label{tab:r-all}
 \end{table}
 
@@ -752,7 +813,7 @@ later only ranked features, because forwarding its predictions cost 0.008 (log 0
 format, which made unit-specific features affordable.
 
 % ---------------------------------------------------------------------------------------------
-\subsection{The final model: LightGBM on LP features}
+\subsection{Track B: LightGBM on LP features}
 \label{sec:pred-final}
 
 Both submitted models were run on the same six walk-forward folds on the same machine, each
@@ -798,6 +859,58 @@ most (Lio 0.864 $\to$ 0.979, Haukeli 0.920 $\to$ 0.973), and the fold SD falls f
 \label{fig:r-unit}
 \end{figure}
 
+% ---------------------------------------------------------------------------------------------
+\subsection{Track C: a sequence neural network}
+\label{sec:pred-nn}
+
+Each case is one sample: an input of 14 units $\times$ 168 hours $\times$ 99 features and a target of
+14 $\times$ 168 commitments. The network, UCNet (244{,}161 parameters), mirrors the structure the EDA
+found:
+\begin{itemize}
+\item a two-layer input projection to width 96, concatenated with a learned 16-dimensional embedding
+  of the unit;
+\item a residual temporal convolution (two layers, kernel 5, the second dilated) and a residual
+  two-layer bidirectional GRU along the 168 hours of each unit --- commitments come in blocks;
+\item residual multi-head self-attention (4 heads) across the 14 units at each hour --- units share
+  water and are coupled through the cascade;
+\item a two-layer head giving one logit per unit-hour.
+\end{itemize}
+Inputs are scaled per feature (median, 10--90\% range, clipped at $\pm 8$). Training minimises binary
+cross-entropy over all unit-hours with AdamW and a one-cycle learning-rate schedule, 20 epochs, batches
+of 32 cases; the submission averages three seeds' probabilities.
+
+\paragraph{Validation.} Track C used an expanding window by year: train on cases starting more than 7
+days before 1 January of year $Y$ (consecutive cases overlap, so the gap prevents leakage), score
+year $Y$. One seed:
+
+\begin{table}[H]
+\centering\small
+\begin{tabular}{lrrrrrr}
+\toprule
+validation year & AUC & \multicolumn{5}{c}{validation AUC after epoch} \\
+ & & 4 & 8 & 12 & 16 & 20 \\
+\midrule
+2019 & 0.9837 & 0.9783 & 0.9790 & 0.9817 & 0.9833 & 0.9837 \\
+2020 & 0.9685 & 0.9643 & 0.9649 & 0.9641 & 0.9696 & 0.9685 \\
+2021 & 0.9658 & 0.9637 & 0.9648 & 0.9626 & 0.9670 & 0.9658 \\
+2022 & 0.9779 & 0.9748 & 0.9710 & 0.9772 & 0.9781 & 0.9779 \\
+\midrule
+mean & \textbf{0.9740} & & & & & \\
+\bottomrule
+\end{tabular}
+\caption{Track C, yearly cross-validation (micro ROC-AUC).}
+\label{tab:r-nn-cv}
+\end{table}
+
+On the same yearly folds, the same network without the 16 physics features scores 0.9697, and
+LightGBM on the same 99 features 0.9722: the sequence model adds $+0.002$ over boosted trees on these
+features, and the physics features $+0.004$ over the base set. On the public leaderboard the network
+scores \textbf{0.99013}, far above its cross-validation --- the same direction as Tracks A and B,
+whose walk-forward estimates also understated their leaderboard scores (the test period is
+post-crisis, the folds are not).
+
+% NN-VS-LP
+
 % =============================================================================================
 \section{Hyperparameters: how the values in the notebooks were obtained}
 \label{sec:r-hyper}
@@ -805,9 +918,10 @@ most (Lio 0.864 $\to$ 0.979, Haukeli 0.920 $\to$ 0.973), and the fold SD falls f
 The course allows a few hyperparameter values to be set directly in the short notebooks, provided
 the report says how they were obtained. Every value set by hand in either notebook is listed here.
 
-\subsection{Short notebook 2: XGBoost (Track A)}
+\subsection{Track A: XGBoost (first submission, not selected)}
 
-The point model's and count model's settings were checked by coordinate descent, one knob at a time,
+Track A's notebook is no longer one of the two selected predictions, but its values are documented
+for completeness. The point model's and count model's settings were checked by coordinate descent, one knob at a time,
 on the most test-like validation year (2021) at stride 3 (log 034).
 
 \begin{table}[H]
@@ -835,7 +949,7 @@ unit-relative extras & up to 30 & set by hand, not tuned: unit-relative and abso
 seed & 0 & fixed for reproducibility \\
 \bottomrule
 \end{tabularx}
-\caption{Hyperparameters of Short notebook 2.}
+\caption{Hyperparameters of the Track A notebook.}
 \end{table}
 
 \subsection{Short notebook 1: LightGBM on LP features (Track B)}
@@ -865,6 +979,23 @@ seed, threads & 0, 4 & reproducibility; the course's 4-core limit \\
 \end{table}
 
 % SENSITIVITY
+
+\subsection{Short notebook 2: UCNet (Track C)}
+
+\begin{table}[H]
+\centering\small
+\begin{tabularx}{\linewidth}{llX}
+\toprule
+parameter & value & how it was obtained \\
+\midrule
+epochs & 20, last-epoch weights & the per-epoch validation curves (Table~\ref{tab:r-nn-cv}) still rise or
+  flatten at epochs 16--20 in every year, so training runs a fixed 20 epochs with no early stopping \\
+% NN-HYPER-PROVENANCE
+seeds & 0, 1, 2; mean of probabilities & averaging seeds reduces the variance of a single network \\
+\bottomrule
+\end{tabularx}
+\caption{Hyperparameters of Short notebook 2.}
+\end{table}
 
 \paragraph{Constants of the LP.} The optimiser in Short notebook 1 also contains fixed numbers that are
 model constants rather than learning hyperparameters: unit conversions ($K = 0.0036$\,Mm\textsuperscript{3}
@@ -986,6 +1117,14 @@ would otherwise spill), a minimum-flow obligation can force a unit on below it, 
 raises it. The three conventions of Section~\ref{sec:fe-lp} are themselves findings about how the
 labels were produced.
 
+\subsection{Track C: what the physics features contribute}
+
+The network's own ablation (Section~\ref{sec:fe-phys}) is its interpretation result: removing the 16
+physics features costs 0.004 AUC overall and 0.014 on 2021, the year that most resembles the test
+period. The features that carry the gain are the ones that encode the same economics as Track B's
+LP --- break-even prices from the efficiency curves, the weekly water budget and block profit
+against start costs --- computed per plant in closed form instead of jointly by a solver.
+
 % =============================================================================================
 \section{The two selected predictions}
 \label{sec:r-sub}
@@ -996,13 +1135,14 @@ labels were produced.
 \toprule
 & Short notebook 1 & Short notebook 2 \\
 \midrule
-model & LightGBM on LP features (Track B) & XGBoost on engineered features (Track A) \\
-Kaggle public score & \kagglelp{} (best) & 0.98058 \\
-walk-forward (6 folds) & 0.9912 & 0.9619 (re-run) / 0.9638 (log 036) \\
-trains on & all 2{,}922 labelled cases & all 2{,}922 labelled cases \\
-runtime, 4 cores & $\sim$2\,h (3{,}647 LPs) $+$ 6\,min & $\sim$40\,min \\
-peak memory & $\sim$5\,GB & $\sim$24\,GB \\
-reproduces the uploaded file & to $2\cdot 10^{-13}$ & closely, not bit for bit (Appendix~\ref{app:repro}) \\
+model & LightGBM on LP features (Track B) & sequence neural network (Track C) \\
+Kaggle public score & \kagglelp{} & 0.99013 \\
+validation & walk-forward 0.9912 (6 half-year folds) & yearly CV 0.9740 (2019--2022) \\
+trains on & all 2{,}922 labelled cases & all 2{,}922 labelled cases, 3 seeds \\
+runtime & $\sim$2\,h (3{,}647 LPs, 4 cores) $+$ 6\,min & $\sim$40\,min on an Apple M-series GPU; % NN-CPU-TIME
+ \\
+peak memory & $\sim$5\,GB & $\sim$8\,GB \\
+reproduces the uploaded file & to $2\cdot 10^{-13}$ & features exactly; training not bit-reproducible on a GPU \\
 \bottomrule
 \end{tabularx}
 \caption{The two predictions selected on Kaggle. Both notebooks start from the raw data, run
@@ -1044,7 +1184,7 @@ taken to its conclusion.
 
 \begin{itemize}
 \item \textbf{Configuration.} \texttt{requirements.txt} next to the notebooks pins the package
-  versions both notebooks were run with. The notebooks contain all code, start from the raw
+  versions both notebooks were run with (Short notebook 2 adds PyTorch). The notebooks contain all code, start from the raw
   competition files (\texttt{data/kernel}, \texttt{data/extended}, \texttt{sample\_submission.csv},
   \texttt{prediction\_mapping.csv}), need no network and write only intermediate results (the LP
   cache) and the submission file.
@@ -1053,16 +1193,18 @@ taken to its conclusion.
   submission ($\sim$6\,min, peak $\sim$5\,GB RAM). Executed end to end from the raw data, it
   reproduces the uploaded file to $2\cdot 10^{-13}$, and its LP solutions are byte-identical to the
   stored ones.
-\item \textbf{Short notebook 2} (XGBoost): builds the hourly table from the raw files, the feature
-  stages, the count table and model, the hourly structure and the long format, and trains on all
-  labelled cases (about 40\,min on 4 cores; peak $\sim$24\,GB of memory including swap). The long
-  design matrix is assembled in place instead of through pandas concatenations; it is verified
-  identical to the original assembly, value for value. The uploaded file was produced on an Apple
-  Silicon Mac. On x86 Linux with the same package versions the count model's importance ranking
-  selects 143 count features instead of 141 (identically at 4 and 8 threads, so not a threading
-  effect), and the output correlates 0.995 with the uploaded file, with 98\% of cells on the same
-  side of 0.5. We attribute this to platform-level floating-point differences that reorder
-  near-tied features; the notebook's last cell reports the comparison.
+\item \textbf{Short notebook 2} (neural network): builds the 99 features from the raw files (about
+  1--2 minutes), checks them against values recorded from the original run, and trains three seeds
+  on all labelled cases. Its 99 features match the original run's checksums (mean and SD of every
+  feature on train and test) to the printed precision. Training on a GPU is not bit-reproducible
+  across machines, so a re-run gives a prediction close to, not identical with, the uploaded file;
+  the notebook's last cell measures the difference when that file is present. The notebook uses CUDA,
+  then Apple MPS, then the CPU. % NN-CPU-TIME-APPENDIX
+\item \textbf{Track A notebook} (\texttt{notebooks/Track A XGBoost (0.98058).ipynb}, not selected):
+  rebuilds our first submission from the raw files (about 40\,min on 4 cores; peak $\sim$24\,GB of
+  memory including swap). The uploaded file was produced on an Apple Silicon Mac; on x86 Linux with
+  the same package versions the count model selects 143 count features instead of 141, and the
+  output correlates 0.995 with the uploaded file.
 \item Source modules, every experiment and its result: \texttt{src/}, \texttt{report/leaderboard.md},
   \texttt{report/runs/}.
 \end{itemize}

@@ -1,0 +1,12 @@
+# Packages for Short notebook 1 (LP + LightGBM) and Short notebook 2 (neural network).
+# Versions the notebooks were run with (Python 3.13). Short notebook 2 was trained originally with
+# torch 2.14.1 on an Apple M-series GPU; any recent torch works, on CUDA, MPS or CPU.
+numpy==2.5.3
+pandas==3.0.5
+pyarrow==26.0.0
+PyYAML==6.0.3
+scipy==1.18.1
+highspy==1.15.1
+lightgbm==4.7.0
+joblib==1.6.0
+torch==2.15.0
