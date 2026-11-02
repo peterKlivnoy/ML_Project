@@ -1,7 +1,7 @@
 """Who we are: the course requires names, student IDs and the Kaggle team name at the top of each
 notebook and of the report (report/Report.tex carries the same values in its title block)."""
 
-KAGGLE_TEAM = "[300] TEAM NAME"
+KAGGLE_TEAM = "[300]"
 
 HEADER = f"""**Group 300 — Kaggle team: {KAGGLE_TEAM}**
 
