@@ -62,10 +62,10 @@ built by Anders Bærheim (Track C in the report):
    embedding — trained on all 2,922 labelled cases with three seeds; the submission is the mean of
    the three seeds' probabilities, with no post-processing.
 
-**Hardware.** The original run trained on an Apple M-series GPU (PyTorch, MPS backend): about 40
-minutes for 3 seeds × 20 epochs. The notebook uses CUDA if available, then MPS, then the CPU; on a
-4-core CPU the bidirectional GRU makes training slow (see the report). GPU training is not
-bit-reproducible across machines, so a re-run lands near 0.990 rather than exactly on 0.99013. The
+**Hardware.** No GPU is needed: on 4 CPU cores training takes about 2 hours (1.9 minutes per epoch,
+3 seeds × 20 epochs). The original run used an Apple M-series GPU (PyTorch, MPS backend), about 40
+minutes; the notebook uses CUDA if available, then MPS, then the CPU. Training is not
+bit-reproducible across devices, so a re-run lands near 0.990 rather than exactly on 0.99013. The
 features are deterministic: Section 3 checks them against values recorded from the original run.
 
 **Memory:** the feature tensor is 3,647 × 14 × 168 × 99 float32 ≈ 3.4 GB; peak about 8 GB.

@@ -1179,8 +1179,7 @@ model & LightGBM on LP features (Track B) & sequence neural network (Track C) \\
 Kaggle public score & \kagglelp{} & 0.99013 \\
 validation & walk-forward 0.9912 (6 half-year folds) & yearly CV 0.9740 (2019--2022) \\
 trains on & all 2{,}922 labelled cases & all 2{,}922 labelled cases, 3 seeds \\
-runtime & $\sim$2\,h (3{,}647 LPs, 4 cores) $+$ 6\,min & $\sim$40\,min on an Apple M-series GPU; % NN-CPU-TIME
- \\
+runtime, 4 CPU cores & $\sim$2\,h (3{,}647 LPs) $+$ 6\,min & $\sim$2\,h (1.9\,min per epoch); $\sim$40\,min on an Apple M-series GPU \\
 peak memory & $\sim$5\,GB & $\sim$8\,GB \\
 reproduces the uploaded file & to $2\cdot 10^{-13}$ & features exactly; training not bit-reproducible on a GPU \\
 \bottomrule
@@ -1239,7 +1238,8 @@ taken to its conclusion.
   feature on train and test) to the printed precision. Training on a GPU is not bit-reproducible
   across machines, so a re-run gives a prediction close to, not identical with, the uploaded file;
   the notebook's last cell measures the difference when that file is present. The notebook uses CUDA,
-  then Apple MPS, then the CPU. % NN-CPU-TIME-APPENDIX
+  then Apple MPS, then the CPU; no GPU is needed: on 4 CPU cores training takes about 2\,h (1.9\,min
+  per epoch for 3 seeds $\times$ 20 epochs).
 \item \textbf{Track A notebook} (\texttt{notebooks/Track A XGBoost (0.98058).ipynb}, not selected):
   rebuilds our first submission from the raw files (about 40\,min on 4 cores; peak $\sim$24\,GB of
   memory including swap). The uploaded file was produced on an Apple Silicon Mac; on x86 Linux with

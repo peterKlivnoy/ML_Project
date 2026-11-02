@@ -61,13 +61,13 @@ Search for these markers (three remain). Each needs one small table or paragraph
 | ~~`% PREDICTOR TABLE` (5.1)~~ | **done** in the cloud session: table and text are in the report (LR 0.9833, RF 0.9895, XGBoost 0.9912, LightGBM 0.9912 mean) | `predictor_comparison_s3.csv` | — | — |
 | `% SENSITIVITY` (6.2) | Table of the 9 LightGBM variants on the two test-like folds (submitted, num_leaves 31/255, min_data_in_leaf 100/2000, lr 0.1×300 / 0.025×1200, feature_fraction 0.5/1.0). Then one sentence on how much the AUC moves, honestly: if a variant beats the submitted one, say so; do not change the submitted model. | `lgbm_sensitivity_s3.csv` | `python lgbm_sensitivity.py 3` | ~30 min |
 | `% NN-VS-LP` (5.4) | LP + LightGBM on Track C's yearly folds (2019–2022, 7-day gap, all cases) next to the network's 0.9837 / 0.9685 / 0.9658 / 0.9779 (mean 0.9740): a like-for-like comparison of the two selected models. | `lp_lightgbm_yearly_cv.csv` | `python lp_yearly_cv.py` | ~20 min |
-| `% NN-CPU-TIME` (Section 8 table) and `% NN-CPU-TIME-APPENDIX` (Appendix A) | Runtime of Short notebook 2: on a GPU (your M4 run, see 3.2), and on CPU only. Last cloud measurement: about 33 s per batch of 32 *under load*, which is ~50 h for 3 seeds × 20 epochs; an idle-core figure is in `nn_cpu_timing.txt` if it ran. State clearly that the notebook needs a GPU to stay under 12 h, and name the GPU: Apple M3/M4, PyTorch MPS backend. | `nn_cpu_timing.txt` | time 4 training batches of `nn_phys.make_model()` on random input of shape (32, 14, 168, 99) and scale by 92 batches × 60 epochs | minutes |
+| `% NN-CPU-TIME` (Section 8 table) and `% NN-CPU-TIME-APPENDIX` (Appendix A) | Runtime of Short notebook 2. **Measured on idle cores: 1.25 s per batch, so 1.9 min per epoch and ~1.9 h for 3 seeds × 20 epochs on 4 CPU cores. No GPU is needed** (an earlier 33 s/batch figure was contention from other jobs). The cloud session queued a full CPU run; if `deliverables/Short notebook 2.ipynb` has outputs, use its measured times. | `nn_cpu_timing.txt`, executed notebook | `python ../src/deliverables_build/execute_notebook.py "Short notebook 2.ipynb" "Short notebook 2.ipynb" . python3` from `deliverables/` | ~2 h |
 
 The cloud session started all four runs. Check whether their result files are complete before re-running anything.
 
-### 3.2 Run Short notebook 2 once on the M4 (GPU) — strongly recommended
+### 3.2 Execute Short notebook 2 (CPU ~2 h, or GPU ~40 min) — if the cloud session did not finish it
 
-This is the only proof the network notebook runs on a real GPU. It also gives the outputs and the runtime for the report.
+Check first whether `deliverables/Short notebook 2.ipynb` already has outputs (the cloud session queued a full run). If not, run it once: it proves the notebook works end to end and gives outputs and runtime for the report.
 
 1. In a fresh virtual environment: `pip install -r sintef_project/deliverables/requirements.txt jupyter nbclient`. On a Mac, PyTorch uses MPS automatically.
 2. Put Anders's `submission_nn_phys.csv` in `sintef_project/`, next to `data/`. The last cell then compares the re-run with it.
@@ -78,7 +78,7 @@ This is the only proof the network notebook runs on a real GPU. It also gives th
    Expect ~2 min for the features (a spot check asserts them against the original run), then ~40 min of training.
 4. Commit the executed notebook. Put the measured runtime and the correlation with the uploaded file into the report (Section 8 table, Appendix A).
 
-Feature status: the 99 features in `src/nn_phys.py` match Anders's checksums (`report/runs/nn_phys_feature_checksums.csv` against Appendix B of the spec). The largest difference is 1e-4 SD, which is rounding; the spot check is exact. The network was never trained in the cloud: there is no GPU there.
+Feature status: the 99 features in `src/nn_phys.py` match Anders's checksums (`report/runs/nn_phys_feature_checksums.csv` against Appendix B of the spec). The largest difference is 1e-4 SD, which is rounding; the spot check is exact. The cloud machine has no GPU, but CPU training is fast enough (~2 h).
 
 ### 3.3 Rebuild and package
 
