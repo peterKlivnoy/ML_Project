@@ -17,6 +17,8 @@ from pathlib import Path
 
 import nbformat as nbf
 
+from team import DATA, HEADER
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import extract as E  # noqa: E402
 
@@ -177,6 +179,8 @@ md, code = nbf.v4.new_markdown_cell, nbf.v4.new_code_cell
 cells = [
     md("""# Short notebook 2 — long-format XGBoost (Kaggle public 0.98058)
 
+""" + HEADER + """
+
 This notebook reproduces our first Kaggle submission (public leaderboard **0.98058**) from the raw
 competition data. It is the end point of the feature-engineering track described in the report
 (logs 001–036): one row per (case, hour, unit), a single binary XGBoost model shared by all units,
@@ -198,16 +202,15 @@ quantises the training matrix and again at prediction. A 16 GB machine needs swa
 automatically. `STRIDE = 3` trains on every
 third case for a quicker, lighter run.
 
-**Requirements:** the versions the uploaded file was produced with: `numpy==2.2.6 pandas==2.3.2
-pyarrow==23.0.1 xgboost==3.4.1 scikit-learn==1.7.2 PyYAML==6.0.3`.
-
 **Reproducibility.** The uploaded file was produced on an Apple Silicon Mac. On a 4-core x86 Linux
 machine with the same package versions this notebook selects 143 count-table features instead of
 141, so the final model differs slightly: its predictions correlate 0.995 with the uploaded file
 and fall on the same side of 0.5 in 98% of cells. The difference is not the thread count (4 and 8
 threads select identical features); we attribute it to platform-level floating-point differences in
 XGBoost's histogram sums, which reorder near-tied features in the count model's importance ranking.
-The last cell compares the result with the uploaded file when `submission.csv` is present."""),
+The last cell compares the result with the uploaded file when `submission.csv` is present.
+
+""" + DATA),
     code('''from __future__ import annotations
 
 import gc
