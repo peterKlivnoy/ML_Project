@@ -18,6 +18,8 @@ from pathlib import Path
 
 import nbformat as nbf
 
+from team import DATA, HEADER
+
 SRC = Path(__file__).resolve().parents[1]
 OUT = SRC.parent / "deliverables" / "Short notebook 1.ipynb"
 
@@ -150,6 +152,8 @@ md, code = nbf.v4.new_markdown_cell, nbf.v4.new_code_cell
 cells = [
     md("""# Short notebook 1 — LP + LightGBM (our best Kaggle submission)
 
+""" + HEADER + """
+
 This notebook reproduces our best Kaggle prediction end to end from the raw competition data.
 
 **Idea.** The target is the on/off decision of SINTEF's SHOP optimiser, and every input SHOP used
@@ -170,8 +174,7 @@ our previous XGBoost model on the same folds. Details and interpretation are in 
 **Runtime** on a 4-core machine: ~2 h for the 3,647 LPs (cached to `lp_cache/` after the first
 run), ~6 min for features and training. Peak memory ~5 GB.
 
-**Requirements:** `numpy pandas pyarrow pyyaml scipy highspy lightgbm joblib`
-(developed with highspy 1.15.1, lightgbm 4.7.0, pandas 3.0, Python 3.13)."""),
+""" + DATA),
     code('''from __future__ import annotations
 
 import re

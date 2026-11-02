@@ -86,7 +86,7 @@ def fig_walkforward():
     ax.text(3, 0.9985, "test-like", ha="center", va="top", fontsize=7.5, color=INK2)
     ax.text(5, 0.9985, "test-like", ha="center", va="top", fontsize=7.5, color=INK2)
     series = [("LP + LightGBM", p["micro"], BLUE), ("XGBoost (submitted)", b["micro"], ORANGE),
-              ("raw LP, no learning", p["lp_raw"], AQUA)]
+              ("LP feature alone, no learning", p["lp_raw"], AQUA)]
     for name, v, c in series:
         ax.plot(x, v.to_numpy(), color=c, marker="o", ms=6, mec=SURF, mew=1.2,
                 label=f"{name} (mean {v.mean():.4f})")

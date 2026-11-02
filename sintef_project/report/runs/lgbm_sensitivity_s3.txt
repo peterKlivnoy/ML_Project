@@ -1,0 +1,4 @@
+  2021-07  submitted                          micro 0.9914  (76s)
+  2021-07  num_leaves 31                      micro 0.9914  (49s)
+  2021-07  num_leaves 255                     micro 0.9913  (98s)
+  2021-07  min_data_in_leaf 100               micro 0.9912  (70s)
