@@ -16,3 +16,6 @@
   2021-07  LightGBM             micro 0.9914  (72s)
   2022-01  logistic regression  micro 0.9754  (70s)
   2022-01  random forest        micro 0.9835  (132s)
+  2022-01  XGBoost              micro 0.9871  (111s)
+  2022-01  LightGBM             micro 0.9862  (73s)
+  2022-07  logistic regression  micro 0.9885  (64s)
