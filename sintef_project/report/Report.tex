@@ -982,6 +982,10 @@ seed, threads & 0, 4 & reproducibility; the course's 4-core limit \\
 
 \subsection{Short notebook 2: UCNet (Track C)}
 
+The network's architecture and optimiser settings were set by hand during development; no record of a
+systematic search over them was kept. The table gives each value and the reasoning it follows; the
+number of epochs is the one value checked against validation curves.
+
 \begin{table}[H]
 \centering\small
 \begin{tabularx}{\linewidth}{llX}
@@ -990,7 +994,15 @@ parameter & value & how it was obtained \\
 \midrule
 epochs & 20, last-epoch weights & the per-epoch validation curves (Table~\ref{tab:r-nn-cv}) still rise or
   flatten at epochs 16--20 in every year, so training runs a fixed 20 epochs with no early stopping \\
-% NN-HYPER-PROVENANCE
+hidden width, unit embedding, attention heads & 96, 16, 4 & set by hand during development; keeps the
+  network small (244{,}161 parameters) next to $\sim$41{,}000 labelled unit-weeks \\
+learning rate and schedule & $2\cdot10^{-3}$, one-cycle, 15\% warm-up & set by hand; standard settings for
+  AdamW on a model of this size \\
+weight decay, dropout, gradient clipping & $10^{-2}$, 0.1, norm 1.0 & set by hand; conventional
+  regularisation for a recurrent network \\
+batch size & 32 cases & set by hand; one case is already $14 \times 168$ outputs \\
+input scaling & median, 10--90\% range, clip $\pm 8$ & robust to heavy tails: prices reach
+  898\,EUR/MWh and margins swing by hundreds within a week \\
 seeds & 0, 1, 2; mean of probabilities & averaging seeds reduces the variance of a single network \\
 \bottomrule
 \end{tabularx}
