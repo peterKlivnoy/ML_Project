@@ -1,0 +1,55 @@
+\subsection{2026-09-22 --- Compact architecture: distil the count model, don't duplicate it}
+\label{sec:compact}
+
+Section~\ref{sec:orthogonal} routed all 323 count features into the pointwise model, gaining
+$+0.068$ but costing 1{,}665s per fit --- a 111$\times$ slowdown. The alternative tested here keeps
+the count model where it is and passes only its \emph{outputs} forward.
+
+\subsubsection*{Architecture.}
+\begin{enumerate}\itemsep1pt
+  \item Count model: 437 features at (case, unit) --- 40{,}908 rows, so it is cheap.
+  \item Its outputs, five numbers per unit: $p_{\text{off}}$, $p_{\text{mix}}$, $p_{\text{on}}$,
+        expected count, and budget margin.
+  \item Pointwise model: the 15 pruned features plus those 70 derived columns.
+\end{enumerate}
+
+\finding{\textbf{The count outputs must be out-of-fold for training rows.} The count model is
+trained on targets derived from the same labels, so in-sample predictions as features would leak,
+exactly as in Section~\ref{sec:stacked}. Cross-fitting by case (4 folds) costs 86s including the
+final full fit.}
+
+\begin{center}
+\begin{tabular}{lrrrr}
+\toprule
+Arm & Features & Pointwise & $+$ budget & Fit time \\
+\midrule
+A\ \ 15 pruned                    & 15  & 0.8346 & 0.9226 & 15s \\
+B\ \ $+$ 323 raw count features   & 323 & 0.9029 & 0.9292 & \textbf{1{,}665s} \\
+\textbf{C\ \ $+$ 70 derived count columns} & \textbf{85} & \textbf{0.9398} & \textbf{0.9402} & \textbf{44s} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\finding{\textbf{Distilling beats duplicating: 0.9402 vs.\ 0.9292, and 38$\times$ faster.}
+Passing 323 raw count features into the pointwise model forced it to re-derive, across 490{,}896
+rows, relationships the count model had already learned on 40{,}908. Passing the \emph{conclusion}
+instead --- five numbers per unit --- is both more accurate and far cheaper. Total pipeline is 130s
+against $\sim$1{,}700s.}
+
+\finding{\textbf{The budget blend becomes redundant} ($+0.0004$). Once the expected count and class
+probabilities are features, the post-hoc logit blend adds nothing, so that stage can be dropped ---
+which also removes $\lambda$ as a hand-tuned parameter, one fewer quantity fitted on a single year
+(Section~\ref{sec:robustness}).}
+
+\finding{\textbf{Soft beats hard-set.} Section~\ref{sec:orthogonal} hard-set unit-weeks at
+$p \ge 0.9$ for $+0.003$ to $+0.005$. Supplying $p_{\text{on}}$ and $p_{\text{off}}$ as features
+lets the model choose its own threshold, obtaining the same benefit without a cutoff fitted by hand
+on 2021, and without the brittleness of an imposed hard assignment.}
+
+\subsubsection*{Caching.} Count outputs are written to
+\texttt{data/processed/count\_outputs\_2021.parquet}, so re-running the pointwise arm costs 44s
+with no recomputation --- making iteration on the pointwise side practical again.
+
+\subsubsection*{Standing.} \textbf{0.9402} on the test-like year 2021, from 0.8346 at the start of
+this sequence. The walk-forward estimate (Section~\ref{sec:walkforward}, 0.9024) predates this
+architecture and must be re-run before it can be quoted as the expected test figure.

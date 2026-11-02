@@ -1,0 +1,46 @@
+\subsection{2026-09-21 --- Discussion: graph structure, joint modeling, and next baseline}
+\label{sec:discussion-next}
+
+The Tokke/Vinje weak spot in Section~\ref{sec:baseline} prompted a discussion of whether the
+watercourse topology (Section~\ref{sec:eda}) should be used more directly, e.g.\ via a graph
+neural network over the reservoir/plant graph.
+
+\subsubsection*{GNN considered and set aside for now.} The topology does explain the Tokke/Vinje
+correlation physically (Vinje's reservoir cascades into Vinjevatn, which Tokke draws from), so a
+graph-based architecture is conceptually reasonable. But: the graph is small ($\sim$22 nodes)
+and \emph{identical} at train and test time, so a GNN's main advantage --- generalizing to
+unseen graph structure --- doesn't really apply here. It would also be a large implementation
+jump (new framework, per-case graph batching, a training loop) relative to what's been built so
+far.
+
+\subsubsection*{A premise checked and corrected.} The natural cheaper alternative --- adding each
+plant's upstream-reservoir features explicitly --- turned out to already be moot: the current
+modeling table (Section~\ref{sec:modeling-table}) already joins \emph{all} 17 reservoirs' data
+into every row, so every unit's baseline model already had access to its neighbors' data. The
+real gap is therefore not missing input features, but that the 14 units are modeled
+\textbf{independently} and can't share information about each other's predictions --- a
+correlated-\emph{output} problem, not a missing-\emph{input} problem.
+
+\subsubsection*{Multi-output architectures considered.} To model 14 correlated binary outputs
+without exploding the output space (treating the full ON/OFF vector as one
+$2^{14}=16{,}384$-way categorical label was explicitly ruled out --- almost all combinations
+never occur, and it discards the partial-credit nature of AUC scoring):
+\begin{itemize}
+  \item \textbf{Multi-output trees}: a single boosted model where each leaf stores a vector of
+    14 probabilities instead of one scalar, with splits chosen to jointly improve all 14
+    outputs (XGBoost's \texttt{multi\_strategy="multi\_output\_tree"}). Leaf count stays linear
+    in tree depth, not exponential in the number of units.
+  \item \textbf{Classifier chains}: feed earlier units' predicted probabilities as extra input
+    features to later units' models, in some order. Simple to bolt onto the existing per-unit
+    XGBoost setup.
+  \item Briefly noted: a shared-trunk neural net with 14 sigmoid output heads (bigger jump from
+    the current XGBoost-based approach; not pursued yet).
+\end{itemize}
+
+\subsubsection*{Decision.} Explicitly \emph{not} anchoring to the earlier plan of testing the
+cheapest hypothesis first (Section~\ref{sec:eda}'s within-case price normalization) before
+trying anything else --- this is an early stage of a multi-week project, and it's fine to
+resequence as better questions surface. Next step agreed: build a \textbf{multi-output tree}
+model as the next baseline and compare directly against the 14-independent-model baseline in
+Section~\ref{sec:baseline}, using the same validation protocol (train 2015--2021, validate on
+2022, score with \texttt{kaggle\_metric.py}).

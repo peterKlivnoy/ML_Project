@@ -1,0 +1,62 @@
+\subsection{2026-09-21 --- Rolling-origin CV harness, and the feature backlog}
+\label{sec:cv-harness}
+
+\subsubsection*{Why.} Before a week of one-feature-at-a-time iteration, the scoreboard has to be
+able to resolve a feature-sized effect. Single-year validation could not: the
+$n_{\text{estimators}}$ comparison in Section~\ref{sec:capacity} spanned $\sim$0.006 AUC and we
+correctly judged it noise, but we had no way to say how much noise. Implemented in
+\texttt{src/modeling/evaluation.py}.
+
+\subsubsection*{Protocol.} For each validation year $Y \in \{2019, 2020, 2021, 2022\}$: train on
+every case starting before $Y$, validate on cases starting in $Y$, score with
+\texttt{kaggle\_metric.py}. Reports per-fold scores plus mean and spread. Model configuration is
+the adopted default from Section~\ref{sec:capacity} ($n_{\text{estimators}}=300$, multi-output
+tree).
+
+\subsubsection*{Baseline result (current raw 54-feature set).}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Rolling-origin CV, raw-feature baseline.}
+  \label{tab:cv-baseline}
+  \begin{tabular}{lrrr}
+    \toprule
+    Validation year & micro-AUC & fit cases & val cases \\
+    \midrule
+    2019 & 0.7987 & 1{,}461 & 365 \\
+    2020 & 0.6786 & 1{,}826 & 366 \\
+    2021 & 0.6663 & 2{,}192 & 365 \\
+    2022 & 0.6858 & 2{,}557 & 365 \\
+    \midrule
+    \textbf{Mean} & \textbf{0.7074} & & \\
+    \textbf{SD}   & \textbf{0.0614} & & \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\finding{Fold-to-fold standard deviation is \textbf{0.0614} --- roughly \textbf{ten times larger}
+than the $\sim$0.006 differences we were weighing between tree counts in
+Section~\ref{sec:capacity}. 2019 (0.799) is a large outlier against 2020--2022 (0.666--0.686).
+Single-year validation cannot resolve feature-sized effects, and any conclusion drawn from one
+holdout year --- including our earlier per-unit comparisons --- carries far more uncertainty than
+the numbers suggested.}
+
+\finding{\textbf{Methodological consequence: judge features on \emph{paired per-fold deltas}, not
+on the mean.} Folds differ enormously in intrinsic difficulty, so the mean's spread is dominated
+by which year is being predicted, not by the feature. A feature that improves all four folds by
+$+0.004$ each is credible; one that moves the mean by $+0.02$ via a single fold is not. Record
+per-fold deltas and the sign pattern for every experiment.}
+
+\subsubsection*{Feature backlog.} \texttt{report/feature\_backlog.md} holds the candidate list:
+20 topics, 5--8 concrete features each ($\sim$120 candidates), each tagged with the EDA round that
+motivates it and a status field. It is ordered at the end by expected value over effort. The
+highest-evidence entries are the case-relative price normalisations
+(Section~\ref{sec:eda-round-3}, finding 1), the raw price\,$-$\,water-value spread
+(Section~\ref{sec:eda-round-2}, finding 7), and the terminal water value
+(Section~\ref{sec:eda-round-3}, finding 6).
+
+\subsubsection*{One structural caveat carried forward.} Every transformation rule from
+Section~\ref{sec:eda-round-3} was established against \emph{univariate correlation with the
+target}, which is a screening tool, not a guarantee: correlation does not account for what the
+other 53 features already supply. The CV harness is the actual arbiter, and some
+well-evidenced candidates will still fail to add anything once tested.

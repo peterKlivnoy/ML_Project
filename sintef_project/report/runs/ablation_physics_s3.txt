@@ -1,0 +1,49 @@
+--- full (drop ())
+features: 61 | rows 8,577,744
+  2020-01  train 608 cases | micro 0.9925 | raw optimiser 0.9720 | Lio 0.9832 | 64s
+  2020-07  train 669 cases | micro 0.9866 | raw optimiser 0.9671 | Lio 0.9938 | 71s
+  2021-01  train 730 cases | micro 0.9950 | raw optimiser 0.9787 | Lio 0.9912 | 71s
+  2021-07  train 791 cases | micro 0.9914 | raw optimiser 0.9695 | Lio 0.9840 | 72s
+  2022-01  train 852 cases | micro 0.9862 | raw optimiser 0.9586 | Lio 0.9438 | 77s
+  2022-07  train 912 cases | micro 0.9953 | raw optimiser 0.9802 | Lio 0.9773 | 82s
+MEAN micro 0.9912 (SD 0.0040) | raw optimiser 0.9710
+TEST-LIKE folds ['2021-07', '2022-07']: micro 0.9934
+--- no_storage_trace (drop ('st_',))
+features: 57 | rows 8,577,744
+  2020-01  train 608 cases | micro 0.9926 | raw optimiser 0.9720 | Lio 0.9831 | 54s
+  2020-07  train 669 cases | micro 0.9865 | raw optimiser 0.9671 | Lio 0.9929 | 57s
+  2021-01  train 730 cases | micro 0.9950 | raw optimiser 0.9787 | Lio 0.9921 | 66s
+  2021-07  train 791 cases | micro 0.9915 | raw optimiser 0.9695 | Lio 0.9837 | 71s
+  2022-01  train 852 cases | micro 0.9852 | raw optimiser 0.9586 | Lio 0.9370 | 75s
+  2022-07  train 912 cases | micro 0.9955 | raw optimiser 0.9802 | Lio 0.9794 | 83s
+MEAN micro 0.9910 (SD 0.0043) | raw optimiser 0.9710
+TEST-LIKE folds ['2021-07', '2022-07']: micro 0.9935
+--- no_optimiser (drop ('lp_',))
+features: 33 | rows 8,577,744
+  2020-01  train 608 cases | micro 0.9404 | raw optimiser 0.5000 | Lio 0.9385 | 45s
+  2020-07  train 669 cases | micro 0.9357 | raw optimiser 0.5000 | Lio 0.9596 | 51s
+  2021-01  train 730 cases | micro 0.9649 | raw optimiser 0.5000 | Lio 0.9496 | 53s
+  2021-07  train 791 cases | micro 0.9283 | raw optimiser 0.5000 | Lio 0.8213 | 55s
+  2022-01  train 852 cases | micro 0.9482 | raw optimiser 0.5000 | Lio 0.8687 | 59s
+  2022-07  train 912 cases | micro 0.9722 | raw optimiser 0.5000 | Lio 0.9077 | 62s
+MEAN micro 0.9483 (SD 0.0171) | raw optimiser 0.5000
+TEST-LIKE folds ['2021-07', '2022-07']: micro 0.9502
+--- optimiser_only (drop ('ec_', 'cn_', 'st_'))
+features: 33 | rows 8,577,744
+  2020-01  train 608 cases | micro 0.9919 | raw optimiser 0.9720 | Lio 0.9817 | 43s
+  2020-07  train 669 cases | micro 0.9859 | raw optimiser 0.9671 | Lio 0.9932 | 46s
+  2021-01  train 730 cases | micro 0.9941 | raw optimiser 0.9787 | Lio 0.9924 | 51s
+  2021-07  train 791 cases | micro 0.9905 | raw optimiser 0.9695 | Lio 0.9812 | 50s
+  2022-01  train 852 cases | micro 0.9811 | raw optimiser 0.9586 | Lio 0.9154 | 54s
+  2022-07  train 912 cases | micro 0.9944 | raw optimiser 0.9802 | Lio 0.9761 | 58s
+MEAN micro 0.9897 (SD 0.0052) | raw optimiser 0.9710
+TEST-LIKE folds ['2021-07', '2022-07']: micro 0.9925
+/home/user/ML_Project/sintef_project/src/physics_model.py:163: Pandas4Warning: Starting with pandas version 4.0 all arguments of mean will be keyword-only.
+  out["mean"] = out.mean(1)
+/home/user/ML_Project/sintef_project/src/physics_model.py:164: Pandas4Warning: Starting with pandas version 4.0 all arguments of mean will be keyword-only.
+  out["test_like"] = out[TEST_LIKE].mean(1)
+fold              2020-01  2020-07  2021-01  2021-07  2022-01  2022-07    mean  test_like
+full               0.9925   0.9866   0.9950   0.9914   0.9862   0.9953  0.9912     0.9934
+no_storage_trace   0.9926   0.9865   0.9950   0.9915   0.9852   0.9955  0.9910     0.9935
+no_optimiser       0.9404   0.9357   0.9649   0.9283   0.9482   0.9722  0.9483     0.9502
+optimiser_only     0.9919   0.9859   0.9941   0.9905   0.9811   0.9944  0.9897     0.9925

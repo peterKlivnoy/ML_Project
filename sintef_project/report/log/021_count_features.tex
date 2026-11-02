@@ -1,0 +1,66 @@
+\subsection{2026-09-22 --- Multi-horizon features for the count model}
+\label{sec:countfeat}
+
+The count is the binding constraint (Sections~\ref{sec:oracle}--\ref{sec:robustness}). This entry
+targets it directly with a multi-horizon time-series feature set, built as
+\texttt{src/count\_features.py} and evaluated at \textbf{(case, unit)} granularity on
+\textbf{2021} --- the test-like year, following Section~\ref{sec:robustness}.
+
+\subsubsection*{Design.}
+\begin{itemize}\itemsep1pt
+  \item \textbf{Windows in both directions}: trailing 1w/1m/3m/1y, forward 1w/1m, and previous and
+        next week explicitly. Water is storable, so SHOP trades volume across weeks --- high prices
+        next week should suppress this week's count. Forward windows are permitted; only
+        test-period targets are withheld (Section~\ref{sec:eda-round-3b}).
+  \item \textbf{Relative rather than absolute}: for every horizon, the week's level minus that
+        horizon and the ratio to it, plus a seasonal comparison against the same calendar week
+        across history. The spread changed sign after 2020, so absolute levels mislead across
+        regimes (Section~\ref{sec:robustness}).
+  \item \textbf{Inferred latent quantities}: SHOP sees demand and we do not, but price carries its
+        signature --- rolling price volatility and seasonal price deviation stand in for demand
+        pressure.
+\end{itemize}
+
+Applied to price, water value, spread, storage, inflow and price-volatility at system level (150
+features), plus own-reservoir water value, own-spread and own-storage per plant (75 more). At
+(case, unit) that is 244 features over 35{,}798 rows --- unlike the earlier count attempt, which
+put 1{,}197 features over 2{,}557 cases (Section~\ref{sec:oracle}).
+
+\subsubsection*{Result (validation 2021).}
+
+\begin{center}
+\begin{tabular}{lrrrr}
+\toprule
+Count features & Count MAE & 3-class acc & Blended score & $\Delta$ vs.\ pointwise \\
+\midrule
+Old (19)               & 48.8h & 0.616 & 0.8486 & $+0.0140$ \\
+\textbf{New (244)}     & \textbf{43.2h} & \textbf{0.641} & \textbf{0.8561} & $\mathbf{+0.0216}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\finding{\textbf{Count MAE falls 48.8h to 43.2h ($-11\%$) and it converts into score}: the
+blended result rises 0.8486 to 0.8561, taking the budget augmentation from $+0.014$ to $+0.022$
+over the 0.8346 pointwise baseline. This is the first feature work in several rounds that moved
+the number on a test-like year.}
+
+\finding{\textbf{The top count feature is an accidental water balance.}
+\texttt{storage\_next\_minus\_prev} --- system storage after the case week minus storage before it
+--- has gain 336{,}834, nearly twice the next feature. Net weekly drawdown \emph{is} water
+released, which is production, which is count $\times$ capacity. The cascade water balance
+hypothesis (Sections~\ref{sec:pruning}, \ref{sec:state}) therefore arrives here by a different
+route, in its crudest possible form --- system-level, no cascade attribution, no upstream plant
+discharge --- and still dominates every other count feature.}
+
+\finding{\textbf{Gain share validates two design choices.} Relative-to-horizon comparisons are the
+largest family at \textbf{33.1\%}, and own-reservoir features second at \textbf{27.7\%} --- the
+per-unit specificity that only became expressible once \emph{unit} became a row dimension
+(Section~\ref{sec:budget}). Forward windows read 6.9\% by family label, but that undercounts them:
+\texttt{ownwv\_next\_week} is the third most important feature individually and the top feature
+overall is built from next-week storage.}
+
+\subsubsection*{Next.} The system-level drawdown proxy dominates while ignoring cascade structure
+entirely. A per-plant balance --- natural inflow plus upstream plant discharge minus downstream
+draw and spill, attributed through the topology graph --- is the obvious successor and is the last
+major unexploited data source. Count MAE remains 43.2h against an 87h mean, and the oracle ceiling
+is 0.9765, so the headroom is still largely intact.

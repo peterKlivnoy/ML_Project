@@ -1,0 +1,77 @@
+\subsection{2026-09-22 --- Feeding the count features forward, and an orthogonal trace}
+\label{sec:orthogonal}
+
+Three ideas tested, two adopted, one refuted.
+
+\subsubsection*{1. The count features never reached the pointwise model.}
+The architecture had Stage A (pointwise, 14 outputs) running on \textbf{15 features} while 378
+informative count features sat one stage downstream, used only by the count model and injected
+back through the blend.
+
+\begin{center}
+\begin{tabular}{lrrr}
+\toprule
+Pointwise feature set & Pointwise alone & $+$ budget & $+$ hard-set \\
+\midrule
+15 pruned features            & 0.8346 & 0.9166 & 0.9217 \\
+\textbf{$+$ count features (323)} & \textbf{0.9029} & 0.9260 & \textbf{0.9292} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\finding{\textbf{Routing the count features into the pointwise model is worth $+0.068$ on its own}
+(0.8346 $\to$ 0.9029) and $+0.0075$ on the full pipeline. Note that the budget term then adds much
+less ($+0.023$ vs.\ $+0.082$), which is the expected behaviour: once the pointwise model sees the
+count information directly, the blend has less marginal content to supply. Cost is the caveat ---
+1{,}665s vs.\ 15s, a 111$\times$ slowdown, acceptable once for a submission but not for iteration.}
+
+\subsubsection*{2. Hard-setting confident all-off / all-on unit-weeks.}
+Calibration of the 3-class model on 2021:
+
+\begin{center}
+\begin{tabular}{lrrr}
+\toprule
+Confidence & Unit-weeks & Coverage & Precision \\
+\midrule
+$p \ge 0.80$ & 1{,}274 & 24.9\% & 0.920 \\
+$p \ge 0.90$ & 766 & 15.0\% & 0.978 \\
+$p \ge 0.95$ & 407 & 8.0\% & 0.993 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\finding{\textbf{The 3-class model is well calibrated at the extremes, and its errors are soft.}
+At $p \ge 0.9$ precision is 0.978 over 15\% of unit-weeks, and \textbf{97--100\% of the errors are
+``mixed''} rather than the opposite class --- a week called all-off that is really mixed still has
+most hours off, so a wrong hard-set costs little. Pushing those cells to the extremes of the
+ranking is worth $+0.003$ to $+0.005$.}
+
+\subsubsection*{3. Water value as an orthogonal post-decision trace.}
+Water values are SHOP \emph{outputs} --- shadow prices on stored water. Generating depletes the
+reservoir and raises the marginal value of what remains, so week-over-week water-value change
+traces the schedule through a different channel than physical storage.
+
+\finding{\textbf{The two traces are near-orthogonal: corr(wv change, storage drawdown) $= +0.068$.}
+At system level water value is the \emph{stronger} signal ($-0.215$ vs.\ $-0.095$ against total
+unit-hours). It also fills a structural gap: Vatjern and Hyljelihyl have constant synthetic storage
+(Section~\ref{sec:eda-round-2}) so Haukeli has no storage trace at all, yet its water value moves.
+For Lio the two traces disagree in sign (wv $-0.222$, storage $+0.177$), indicating storage there is
+confounded --- plausibly by Byrte discharging into Byrtevatn --- while water value is not.}
+
+\finding{Adding 59 water-value-trace features cuts count MAE \textbf{26.07h $\to$ 24.21h} on 2021
+and \textbf{21.97h $\to$ 19.75h} on 2022 ($-7\%$ and $-10\%$), for 7.7--10.5\% of count-model gain.
+Top contributors are the orthogonal terms: \texttt{wvt\_sys\_change},
+\texttt{wvt\_change\_pct\_Tokke}, \texttt{wvt\_downstream\_change\_Vinje}.}
+
+\subsubsection*{4. Refuted: daily storage resolution.}
+Storage is daily, so each case has 8 readings rather than 2, and the intermediate values might
+have constrained the schedule at daily resolution. They do not:
+$\text{corr}(\text{daily drawdown}, \text{daily unit-hours}) = -0.086$ against $-0.407$ for the
+weekly equivalent --- the daily signal is roughly \textbf{five times weaker}. Daily fluctuations are
+dominated by inflow and other plants' activity, which weekly aggregation averages out. Recorded so
+the idea is not revisited.
+
+\subsubsection*{Standing.} Best on the test-like year 2021 is now \textbf{0.9292}
+(pointwise-with-count-features $+$ budget $+$ hard-set), from 0.8346 at the start of this sequence.
+The walk-forward estimate (Section~\ref{sec:walkforward}) predates these three changes and should
+be re-run before any submission.

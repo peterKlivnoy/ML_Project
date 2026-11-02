@@ -1,0 +1,99 @@
+\subsection{2026-09-23 --- Twelve negative results, and three methodological failures}
+\label{sec:negatives}
+
+\subsubsection*{Why this entry exists}
+
+Between Section~\ref{sec:longform} and the present standing figure of 0.9632, twelve feature
+additions were built and tested. All twelve failed. `report\_rules.md` requires that negative
+results are kept rather than quietly dropped, and a run of this length is itself the finding:
+every gain in the same period came from \emph{correcting a defect}, not from adding information.
+
+\subsubsection*{The twelve}
+
+\begin{center}\small
+\begin{tabular}{llr}
+\toprule
+addition & where & micro vs 0.9632 \\
+\midrule
+287 slope features, bulk & count model & $-0.0020$ \\
+slopes, forwarded budget 180 & count model & $-0.0023$ \\
+weak-unit weights (Lio 3$\times$, Haukeli/Hogga 2$\times$) & pointwise & $-0.0016$ \\
+slopes $+$ weak-unit weights & both & $-0.0040$ \\
+nine slope themes, 7 features each & pointwise & $-0.0003$ to $-0.0010$ \\
+slope block masked to Haukeli only & pointwise & $-0.0005$ \\
+slope block masked to Haukeli $+$ Hogga & pointwise & $-0.0008$ \\
+full 12-value count distribution & pointwise & $-0.0008$ \\
+neighbour counts (sibling/upstream/downstream) & pointwise & $-0.0006$ \\
+distribution $+$ neighbours & pointwise & $-0.0005$ \\
+count-model hyperparameter search & count model & $0.0000$ \\
+forwarded budget 180 / 200 & architecture & $-0.0023$ / $-0.0014$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Two are worth more than one line.
+
+\paragraph{Slopes (\texttt{src/slopes.py}, 287 features).} Rates of change of water value,
+storage, price, inflow and spread, at case-relative offsets. Motivated by the terminal-water-value
+slope being one of the largest single gains in the project (Section~\ref{sec:docs}), and by the
+fact that a derivative is a difference and therefore stationary by construction: \textbf{0 of 280
+slope features drift more than 0.5 SD} across the 2021--22 regime break, against 14.1\% of
+importance sitting on drifting levels (Section~\ref{sec:diagnosis}). Net $-0.0020$, but
+\textbf{Haukeli $+0.0154$}, reproducibly, while eleven of fourteen units got worse. Mechanistically
+plausible --- Haukeli's storage is a documented placeholder constant (Section~\ref{sec:docs}), so
+price and spread dynamics are the only dynamics it has.
+
+\paragraph{Full distribution and neighbour counts.} The head forwards \texttt{p\_off},
+\texttt{p\_on}, \texttt{p\_low}, \texttt{p\_high}, \texttt{exp\_count} --- a summary designed for
+the WIDE model, where each forwarded number cost 14 columns. In long format a number costs one
+column, so the compression buys nothing and discards the shape that made the binned head work.
+Forwarding all six bins plus dispersion, entropy and threshold masses: $-0.0008$. Giving each
+unit its hydraulic neighbours' predicted counts (\texttt{longform.neighbour\_context}, using the
+\texttt{Songa}$\to$\texttt{Vinje} edge that only exists after the tunnel fix): $-0.0006$.
+
+\subsubsection*{Three methodological failures, recorded so they are not repeated}
+
+\begin{finding}[1. Rotating-block validation is optimistic by construction]
+A rotating two-month holdout was proposed and built (\texttt{src/validation.py}): eight blocks,
+one per year, all seasons, 2{,}847 training cases per fold against 2{,}373 under single-year
+holdout. It returned 0.9794 and 0.9652 on its first two folds --- far above any temporal estimate
+--- because it lets the model train on data from \emph{both sides} of the held-out window. The
+test set is 2023--24, strictly after all training data: that is extrapolation, and rotating blocks
+measure interpolation. This is the same objection already raised against leave-one-out earlier in
+the project and then not applied to our own proposal. Abandoned; walk-forward remains the protocol.
+It was also infeasible --- 10.4 hours per fold at full stride.
+\end{finding}
+
+\begin{finding}[2. The slope themes were routed to the wrong stage]
+The bulk slope test merged slopes into \texttt{CT}, the COUNT model's input. The themed sweep and
+the masking test added them to the POINTWISE model only. All nine themes returned $-0.0003$ to
+$-0.0010$ with no trace of Haukeli's $+0.0154$ --- not a refutation, a test of something else.
+The evidence was in the original output and was missed: count MAE moved 23.48 $\to$ 23.04h, which
+only the count model can cause. Re-running the themes on the count stage.
+\end{finding}
+
+\begin{finding}[3. Two job-scheduling bugs cost real time]
+Jobs were chained by \texttt{pgrep} on process-name patterns. First a circular deadlock --- each
+waiting shell's own command line contained the other's pattern, so two jobs waited on each other
+indefinitely and the group sweep never ran despite being reported as running. Then a thundering
+herd --- three waiters watching the same job all started at once when it exited, contending for
+CPU and risking the swap thrashing documented in Section~\ref{sec:tuning}. Replaced with a
+lock-directory queue (\texttt{/tmp/runq.sh}). Inferring job state from process lists is the
+error; a lock is the fix.
+\end{finding}
+
+\subsubsection*{What this implies}
+
+\begin{finding}
+Across the session, everything that worked was a correction and nothing that was invented helped:
+tunnel topology $+0.0067$, terminal water value $+0.0059$, long format $+0.006$, hourly structure
+$+0.0025$, pointwise hyperparameters $+0.0028$ --- against twelve consecutive failed additions.
+The reasonable conclusion is that the current feature set is saturated for this architecture, and
+that further effort is better spent on validation and the submission than on a thirteenth family.
+\end{finding}
+
+Standing figure: \textbf{0.9632} on held-out 2021 at stride 3, from 0.9402 at the start of the
+session. It rests on a \emph{single validation year}; the last honest multi-fold number is the
+0.9350 (SD 0.0128) of Section~\ref{sec:wf2}, on a much older architecture. Walk-forward with the
+current configuration is the next task, and the submission pipeline --- 725 test cases, never
+built --- is the one after it.

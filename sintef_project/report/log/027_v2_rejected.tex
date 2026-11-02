@@ -1,0 +1,62 @@
+\subsection{2026-09-22 --- Fixing the four worst units: correct physics, no gain}
+\label{sec:v2rejected}
+
+Section~\ref{sec:compact} left four units with much worse count error than the rest --- Songa
+(43.4h), Lio (40.6h), Haukeli (35.3h), Hogga (29.5h) against 12--22h elsewhere --- and
+$\text{corr}(\text{per-unit count MAE}, \text{per-unit AUC}) = -0.756$, so the count really is what
+drives per-unit performance.
+
+\subsubsection*{Diagnosis (all four confirmed).}
+\begin{itemize}\itemsep1pt
+  \item \textbf{Songa}: \texttt{source = None} --- fed by two \emph{tunnels} (Songavatn,
+        Bitdalsvatn), so its entire water balance was built on nothing.
+  \item \textbf{Haukeli}: source Vatjern has \textbf{one unique storage value} --- a synthetic
+        constant (Section~\ref{sec:eda-round-2}), so no source-side trace exists.
+  \item \textbf{Lio}: the upstream-discharge correction was applied in 100\% of cases, but
+        $\text{corr}(\text{release}, \text{drawdown}) = -0.253$ --- Byrte's noisy release estimate
+        was swamping and inverting Lio's own signal.
+  \item \textbf{Hogga}: \texttt{r\_Vest\_Vassdraget} flows into Bandak and was never counted --- and
+        per the dataset documentation that is the \emph{one} river carrying inflow data.
+\end{itemize}
+
+\subsubsection*{Fixes, and their isolated effect.}
+Tunnel-resolved multi-source balances, river inflows added, downstream-rise proxies for plants
+with dead source storage, and both raw and upstream-corrected release offered separately.
+Correlation of the corrected release with the actual count: Hogga $+0.286$, Haukeli $-0.128$
+(previously unavailable), Lio raw $+0.101$ vs.\ corrected $+0.055$ --- confirming the Lio diagnosis
+exactly --- Songa $+0.026$.
+
+\subsubsection*{Result: rejected.}
+
+\begin{center}
+\begin{tabular}{lrr}
+\toprule
+ & Count MAE & micro-AUC \\
+\midrule
+Without v2                   & 24.21h & \textbf{0.9402} \\
+With v2 ($+$77 features)     & 24.19h & 0.9372 \ ($-0.0030$) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\finding{\textbf{Correct physics did not produce useful features.} Aggregate count MAE was
+unchanged (24.21h $\to$ 24.19h) and micro-AUC fell 0.003, with \textbf{13 of 14 units flat or
+worse}. The targeted units fared worst of all: Lio, whose diagnosis was the cleanest, regressed
+most ($-0.016$ AUC); Haukeli lost 0.010; Hogga moved $+0.001$. Songa, predicted not to improve,
+had the largest MAE gain ($-1.30$h) and still lost AUC.}
+
+\finding{\textbf{The failure mode was dilution, which had been flagged in advance.} Adding 77
+columns to a 437-feature count model, most irrelevant to any given unit, supplied no information
+the model was not already obtaining through the water-value trace, the multi-horizon windows and
+the original balance --- while the extra noise cost 0.003 downstream. Every specific prediction
+made before the run was wrong; only the dilution caveat held.}
+
+\finding{\textbf{Songa's error appears irreducible with the available data.} Songavatn is the
+largest reservoir (640\,Mm\textsuperscript{3}) and drains through three paths --- the Songa plant
+plus two rivers into Totak. The plant's $\sim$32\,Mm\textsuperscript{3} weekly draw cannot be
+separated from river spill in a storage balance. This is an attribution limit, not an
+implementation defect, and further work on Songa's water balance is not warranted.}
+
+\subsubsection*{Standing.} Best remains \textbf{0.9402} (Section~\ref{sec:compact}). The v2 module
+is retained in \texttt{src/production\_features.py} as \texttt{build\_v2} but is \emph{not} part of
+the pipeline.

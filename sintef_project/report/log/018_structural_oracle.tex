@@ -1,0 +1,85 @@
+\subsection{2026-09-22 --- Structural analysis: the whole gap is one number per unit-week}
+\label{sec:oracle}
+
+After $\sim$300 features and several architectures the score had been stuck near 0.82--0.83. This
+entry steps back from features to ask what structure the problem has, what structure our
+architecture imposes, and where the mismatch is.
+
+\subsubsection*{The mismatch.}
+SHOP solves a \emph{coupled, constrained} optimisation: one global solution over a 168-hour
+horizon in which every hour's decision depends on every other hour's, subject to a water budget
+and start costs. Our model is a pointwise IID classifier: 490{,}896 rows treated as independent
+samples. It has no representation of ``this unit runs 87 hours this week, so once the best 87
+hours are taken the rest must be off''. The budget constraint --- the thing the optimizer is
+actually resolving --- is structurally invisible to it. The best such a model can do is make each
+hour's probability monotone in the spread, which is exactly what it does, and plausibly why it
+plateaus.
+
+\subsubsection*{Oracle test.}
+If the only thing the model had to learn were \emph{how many hours} each unit runs that week, and
+the hours themselves were allocated by ranking on the spread we already have:
+
+\begin{center}
+\begin{tabular}{lr}
+\toprule
+ & micro-AUC (2022) \\
+\midrule
+Oracle weekly count $+$ allocate by system spread rank   & \textbf{0.9765} \\
+Oracle weekly count $+$ allocate by own-plant spread     & 0.9650 \\
+Current pointwise model (15 features)                    & 0.8347 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\finding{\textbf{The entire gap from 0.83 to 0.98 lies in one number per unit per week.} Given the
+true hours-on count, allocating those hours by spread rank --- using a feature we already have,
+with no further modelling --- reaches \textbf{0.9765}. The question of \emph{which} hours, which
+the whole feature-engineering effort has been aimed at (price shape, windows, normalisation, lead/lag),
+is essentially already solved. The question of \emph{how many} is untouched and is where all the
+remaining error lives.}
+
+\finding{The target is also far more degenerate than the 2{,}352-binary framing suggests:
+\textbf{58.8\% of unit-weeks are entirely all-on or all-off}. The real difficulty is concentrated
+in the $\sim$41\% of unit-weeks that are mixed.}
+
+\subsubsection*{Prototype, and its failure.}
+The natural reformulation --- regress hours-on per (case, unit), then allocate --- was built and
+tested.
+
+\begin{center}
+\begin{tabular}{lr}
+\toprule
+ & micro-AUC (2022) \\
+\midrule
+Oracle count $+$ allocation      & 0.9765 \\
+\textbf{Predicted count $+$ allocation} & \textbf{0.7801} \\
+Current pointwise model          & 0.8347 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\finding{\textbf{The reformulation as implemented is worse than the model it was meant to
+replace} (0.7801 vs.\ 0.8347). Count MAE was \textbf{43.6 hours} against a target mean of 87h ---
+the count is barely predicted at all --- and hard allocation amplifies that error, because a wrong
+budget produces a step function that ranks badly, whereas the pointwise model degrades smoothly.
+The structure is right (the oracle proves the ceiling exists); this realisation of it is not.}
+
+\subsubsection*{Three identifiable faults in the prototype.}
+\begin{enumerate}\itemsep1pt
+  \item \textbf{Over-featured and data-starved.} Case-level aggregation produced
+        \textbf{1{,}197 features over 2{,}557 training cases} ($p \approx 0.5n$). The feature
+        matrix was built by reflex (mean/std/max/min of all 299 columns) rather than by design.
+  \item \textbf{Wrong target shape.} With 58.8\% of unit-weeks at 0 or 168, this is a three-part
+        problem (all-off / all-on / mixed), not a single continuous regression over $[0,168]$.
+  \item \textbf{Hard allocation.} The budget should \emph{modulate} the pointwise probabilities,
+        not replace them. Rescaling existing probabilities so each unit-week sums to the predicted
+        count keeps smooth ranking while injecting the budget signal, and cannot underperform the
+        pointwise model when the shift is small.
+\end{enumerate}
+
+\subsubsection*{What this changes.}
+The bottleneck is now located precisely, and it is a much narrower problem than before: predict
+one integer per unit-week, over 40{,}908 examples, where 59\% of the mass sits at two values. That
+is a better-posed target than continuing to search a 490k-row pointwise feature space whose
+allocation question is already solved. Further work on price-shape, window and normalisation
+features is, on this evidence, work on the part of the problem that is not broken.

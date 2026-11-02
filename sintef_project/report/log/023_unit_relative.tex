@@ -1,0 +1,62 @@
+\subsection{2026-09-22 --- Unit-relative features, and a diagnosis I got wrong}
+\label{sec:unitrel}
+
+\subsubsection*{The concern.} The count model trains at (case, unit) but was given every plant's
+columns under absolute names, so a Tokke\_G1 row could see \texttt{binding\_min\_Haukeli} --- which
+ranked as the single most important count feature (Section~\ref{sec:production}). That looked like
+the model latching onto an unrelated unit, and I agreed it was a design flaw.
+
+\subsubsection*{It was not a flaw.} The relevance map built for this entry shows why:
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+Plant & Source reservoir & Plants discharging into it \\
+\midrule
+Tokke & Vinjevatn & \textbf{Vinje, Haukeli} \\
+Hogga & Bandak & Tokke \\
+Lio & Byrtevatn & Byrte \\
+Kjela & Foersvatn & Vesle Kjela \\
+Byrte / Haukeli / Vesle Kjela / Vinje & --- & none (top of chain) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\finding{\textbf{Haukeli discharges into Vinjevatn, and Tokke draws from Vinjevatn.}
+\texttt{binding\_min\_Haukeli} in a Tokke row is a direct hydraulic relationship, not a spurious
+correlation --- Haukeli's water situation literally determines part of Tokke's inflow. The cascade
+is Vinje/Haukeli $\to$ Vinjevatn $\to$ Tokke $\to$ Bandak $\to$ Hogga. I should have consulted the
+topology before accepting the diagnosis, particularly since the map needed to check it had already
+been built in Section~\ref{sec:stacked}.}
+
+\subsubsection*{Test.}
+
+\begin{center}
+\begin{tabular}{lrrrr}
+\toprule
+Count feature set & MAE & 3-class acc & Blended score & $\Delta$ vs.\ pointwise \\
+\midrule
+Absolute plant names (318)       & 28.4h & 0.741 & 0.9086 & $+0.0740$ \\
+Unit-relative only (220)         & 36.5h & 0.716 & 0.8790 & $+0.0444$ \\
+\textbf{Combined (378)}          & \textbf{26.1h} & \textbf{0.748} & \textbf{0.9168} & $\mathbf{+0.0822}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\finding{\textbf{Absolute naming beats unit-relative alone by $+0.030$}, consistent with the
+coupling being real. But \textbf{combining both is better than either} ($0.9168$): supplying the
+relationship pre-identified, as \texttt{own\_*} and \texttt{upstream\_*}, helps even when the raw
+columns are also present. The model does not have to infer which of nine plants is hydraulically
+relevant to the row it is scoring.}
+
+\finding{\textbf{The unit-relative arm was a lossy comparison and should not be read as a clean
+verdict on relative encoding.} It collapsed the per-reservoir constraints into two mean columns and
+dropped from 318 to 220 features, so it tested \emph{one particular} relative encoding rather than
+the principle. Two signs it was working where it had proper inputs:
+\texttt{own\_hours\_profitable} ranked second once a genuine own-plant feature existed, and
+\texttt{own\_n\_minvol}/\texttt{own\_n\_minflow} ranked high --- though those are per-plant
+constants being used as plant identifiers, which is degenerate.}
+
+\subsubsection*{Standing.} On the test-like year 2021, the progression is
+$0.8346 \to 0.8561 \to 0.9086 \to \mathbf{0.9168}$. Note this is the leaderboard track, which uses
+post-decision state; the causal-only track stands at 0.8548 (Section~\ref{sec:production}).

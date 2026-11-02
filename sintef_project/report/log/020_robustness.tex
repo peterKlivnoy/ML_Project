@@ -1,0 +1,77 @@
+\subsection{2026-09-22 --- Regime robustness: a proposal refuted}
+\label{sec:robustness}
+
+\subsubsection*{The concern.} The Kaggle test set is 2023-01-01 to 2024-12-25 (725 cases, last
+predicted hour 2024-12-31 23:00). Measuring each training year's distance from that test regime
+across price, water value, storage, inflow and spread:
+
+\begin{center}
+\begin{tabular}{lr}
+\toprule
+Training year & Standardised distance from 2023--24 \\
+\midrule
+2017 & 0.86 \\
+2015 / 2020 / 2016 / 2018 & 1.40--1.48 \\
+2021 / 2019 & 1.88 / 2.05 \\
+\textbf{2022} & \textbf{4.77} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\finding{\textbf{2022 is more than twice as far from the test regime as any other year, and it is
+the year every decision in this project has been validated on.} The spread --- the quantity every
+surviving feature is built from --- changed sign after 2020: $+0.6$ to $+9.3$ over 2015--2020,
+then $-14.0$ (2021), $-85.3$ (2022), $-17.6$ (2023), $-1.8$ (2024). Test-year 2023 resembles 2021;
+2024 resembles 2015/2016/2020; neither resembles 2022.}
+
+\subsubsection*{Test.} Validate on 2021 (closest analogue to 2023) instead of 2022, and
+leave-one-year-out on the training set.
+
+\begin{center}
+\begin{tabular}{lrrrr}
+\toprule
+Validation year & Pointwise & $+$ budget & $\lambda$ & Count MAE \\
+\midrule
+2021 (test-like) & 0.8346 & 0.8488 & 4 & 48.5h \\
+2022 (anomalous) & 0.8347 & 0.8587 & 8 & 34.6h \\
+\bottomrule
+\end{tabular}
+\qquad
+\begin{tabular}{lr}
+\toprule
+Dropped from training & $\Delta$ on 2021 \\
+\midrule
+2020 & $-0.0160$ \\
+2015 & $-0.0105$ \\
+2019 & $-0.0090$ \\
+2018 & $-0.0079$ \\
+2016 & $-0.0065$ \\
+2017 & $-0.0040$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\finding{\textbf{Dropping any training year hurts, and dropping the most anomalous year hurts
+most.} Removing 2020 --- the extreme low-price year (9.3 EUR/MWh) --- costs $-0.0160$, the largest
+loss of any exclusion. This is the opposite of what regime-similarity weighting predicts. Extreme
+years appear to help \emph{because} they are extreme: they show the model the spread relationship
+at its edges. \textbf{The proposal to downweight or exclude regime-discordant years, including
+2022, is withdrawn.}}
+
+\finding{\textbf{Regime mismatch is not the binding constraint.} The pointwise model scores
+0.8346 on 2021 and 0.8347 on 2022 --- identical, despite those being the two most dissimilar
+regimes in the dataset (spread $-14.0$ vs.\ $-85.3$). The $\approx$0.835 ceiling is structural,
+consistent with the oracle result (Section~\ref{sec:oracle}) that the count is what binds.}
+
+\finding{\textbf{One part of the concern survives: $\lambda$ selection.} The budget augmentation is
+worth $+0.0142$ on the test-like year against $+0.0240$ on the anomalous one, with optimum
+$\lambda{=}4$ rather than 8. Tuning on 2022 would have chosen 8 and overstated the benefit. Both
+curves are flat across 4--8 so the cost is small, but submission-time selection should use 2021 and
+expect the lower figure. Note also that count MAE is \emph{worse} on 2021 (48.5h vs.\ 34.6h) while
+the pointwise score is unchanged --- the count model is the regime-sensitive component, which is
+consistent with it being the bottleneck.}
+
+\subsubsection*{A limitation of this test.} The exclusion question cannot be answered directly:
+with rolling-origin validation, any year after the validation year is already excluded, and there
+is no labelled year after 2022 to measure against. Leave-one-out on earlier years is a proxy, and
+its verdict is consistent and one-directional, but it is inference rather than direct measurement.

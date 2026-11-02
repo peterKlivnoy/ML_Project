@@ -1,0 +1,91 @@
+\subsection{2026-09-23 --- Reading the documentation: an off-by-one, a mispriced spread, and a permanent ceiling}
+\label{sec:docs}
+
+\subsubsection*{What we did}
+
+After Section~\ref{sec:longform} the remaining weak unit was Lio, and Haukeli and Hogga were
+still well below the rest. Rather than continue guessing at features, we read
+\texttt{Dataset\_definitions\_and\_explanation.pdf} properly. It settled three things, two of
+which were defects in our own pipeline.
+
+\subsubsection*{Finding 1 --- Haukeli's storage is a documented placeholder, not data}
+
+\begin{quote}
+``Note that because there are no historical records for two small reservoirs, \textbf{Hyljelihyl
+and Vatjern}, their storage is assumed to be \textbf{50\% full}.''
+\end{quote}
+
+\begin{finding}
+Vatjern is Haukeli's source reservoir, and its storage series is a constant 0.150 across all
+3{,}654 days. The post-decision storage trace --- the single largest source of signal in this
+project (Section~\ref{sec:production}, $+0.074$) --- \textbf{does not exist for Haukeli and never
+will}. No feature engineering recovers a measurement that was never taken. Hogga is the milder
+case: Bandak has 136 distinct values in ten years, $cv = 0.068$.
+\end{finding}
+
+This closes a line of work rather than opening one. It also retrospectively explains
+Section~\ref{sec:v2rejected}, where a water-balance correction for Haukeli was built, confirmed
+as diagnostically right, and still failed: the balance was being computed from a constant.
+
+\subsubsection*{Finding 2 --- the terminal water value was read one day late}
+
+\begin{quote}
+``For a scheduling problem spanning one week, for example, starting at 2015-01-01 00:00 and
+ending at 2015-01-07 23:00, the initial volume of a reservoir is the value at 2015-01-01 00:00,
+and its \textbf{final water value should be the value at 2015-01-08 00:00}.''
+\end{quote}
+
+That is start $+$ 7 days. \texttt{stage\_terminal\_wv} used \texttt{pd.Timedelta(days=8)}. Every
+case in the project priced its terminal water against the wrong day, in a feature
+(\texttt{f07\_price\_minus\_terminal\_wv}) that survived pruning into the final fifteen.
+
+The correction alone is small --- $\mathrm{corr}(d_7, d_8) = 0.996$, the water-value series being
+smooth --- and on the user's suggestion both horizons are now emitted, along with lags at 6 and
+9 days, so the model arbitrates rather than the documentation. The genuinely new quantity is
+\texttt{f07\_terminal\_slope} $= wv_{d8} - wv_{d6}$ (sd 1.86 EUR/MWh): the local slope of the
+water value across the decision boundary, i.e.\ whether water is getting scarcer exactly where
+the optimiser stops caring.
+
+\subsubsection*{Finding 3 --- the spread family prices against the wrong quantity}
+
+SHOP maximises revenue plus the salvage value of water left in the reservoir, so the marginal
+cost of generating is the \emph{terminal} water value. The daily \texttt{Synthetic\_water\_value}
+series is an \emph{input} to the problem, not the price its decisions are taken against.
+
+\begin{finding}
+\texttt{f06\_spread\_*}, the family that dominates feature importance across the whole project,
+is \texttt{price} $-$ \texttt{daily\_wv}. The economically correct quantity is \texttt{price}
+$-$ \texttt{terminal\_wv}. Per-plant terminal spreads (\texttt{f07\_term\_spread\_<Plant>}) now
+exist, so each plant is priced against its own reservoir's horizon value rather than a
+basin-wide daily average.
+\end{finding}
+
+\subsubsection*{Measured effect}
+
+\begin{center}\small
+\begin{tabular}{lr}
+\toprule
+& micro-AUC \\
+\midrule
+long format, tunnel topology fixed (L5, stride 3) & 0.9545 \\
+$+$ terminal-wv horizon, lags, slope, per-plant spreads & \textbf{0.9604} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{finding}
+The water-value work is worth \textbf{$+0.0059$}, comparable to the tunnel-topology fix
+($+0.0067$, Section~\ref{sec:longform}). Both were defects rather than innovations.
+\end{finding}
+
+Caveat: this is an across-script comparison at matched stride, year and parameters, but with 195
+features against 189 --- directionally solid, not a controlled isolate. The topology figure IS
+clean, because \texttt{longtest.py} reads the pre-built feature parquet and so used the old
+\texttt{days=8} columns while picking up the live topology fix.
+
+\subsubsection*{What this implies}
+
+Two of the three findings were bugs in our own code, found by reading a three-page PDF that had
+been in the repository since the first session. Together they are worth $+0.013$ --- more than
+every feature family invented in the same period combined. The lesson is recorded in
+Section~\ref{sec:negatives}, where twelve consecutive feature additions failed.
