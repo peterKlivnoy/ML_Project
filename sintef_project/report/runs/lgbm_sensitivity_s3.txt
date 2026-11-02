@@ -3,3 +3,4 @@
   2021-07  num_leaves 255                     micro 0.9913  (98s)
   2021-07  min_data_in_leaf 100               micro 0.9912  (70s)
   2021-07  min_data_in_leaf 2000              micro 0.9911  (94s)
+  2021-07  learning rate 0.1, 300 rounds      micro 0.9909  (40s)
