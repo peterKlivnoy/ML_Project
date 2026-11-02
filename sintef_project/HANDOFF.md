@@ -54,11 +54,11 @@ From the course's "Project Submission and Grading" PDF:
 
 ### 3.1 Fill the four placeholders in `sintef_project/report/Report.tex`
 
-Search for these markers. Each needs one small table or paragraph built from a result file in `sintef_project/report/runs/`. If a result file is missing or incomplete, re-run its command; all of them run from `sintef_project/src/`.
+Search for these markers (three remain). Each needs one small table or paragraph built from a result file in `sintef_project/report/runs/`. If a result file is missing or incomplete, re-run its command; all of them run from `sintef_project/src/`.
 
 | marker (section) | content | result file | command to (re)generate | time on 4 cores |
 |---|---|---|---|---|
-| `% PREDICTOR TABLE` (5.1) | Table: micro-AUC per fold (6 walk-forward folds) for logistic regression, random forest, XGBoost and LightGBM on the same 61 LP features, with the mean and the test-like mean (folds 2021-07, 2022-07). Then 2–3 sentences: the ranking (linear < bagged trees < boosted trees), and that all four types beat Track A's XGBoost (0.9619), because the gain comes from the LP features, not the learner. | `predictor_comparison_s3.csv` | `python predictor_comparison.py 3` | ~35 min |
+| ~~`% PREDICTOR TABLE` (5.1)~~ | **done** in the cloud session: table and text are in the report (LR 0.9833, RF 0.9895, XGBoost 0.9912, LightGBM 0.9912 mean) | `predictor_comparison_s3.csv` | — | — |
 | `% SENSITIVITY` (6.2) | Table of the 9 LightGBM variants on the two test-like folds (submitted, num_leaves 31/255, min_data_in_leaf 100/2000, lr 0.1×300 / 0.025×1200, feature_fraction 0.5/1.0). Then one sentence on how much the AUC moves, honestly: if a variant beats the submitted one, say so; do not change the submitted model. | `lgbm_sensitivity_s3.csv` | `python lgbm_sensitivity.py 3` | ~30 min |
 | `% NN-VS-LP` (5.4) | LP + LightGBM on Track C's yearly folds (2019–2022, 7-day gap, all cases) next to the network's 0.9837 / 0.9685 / 0.9658 / 0.9779 (mean 0.9740): a like-for-like comparison of the two selected models. | `lp_lightgbm_yearly_cv.csv` | `python lp_yearly_cv.py` | ~20 min |
 | `% NN-CPU-TIME` (Section 8 table) and `% NN-CPU-TIME-APPENDIX` (Appendix A) | Runtime of Short notebook 2: on a GPU (your M4 run, see 3.2), and on CPU only. Last cloud measurement: about 33 s per batch of 32 *under load*, which is ~50 h for 3 seeds × 20 epochs; an idle-core figure is in `nn_cpu_timing.txt` if it ran. State clearly that the notebook needs a GPU to stay under 12 h, and name the GPU: Apple M3/M4, PyTorch MPS backend. | `nn_cpu_timing.txt` | time 4 training batches of `nn_phys.make_model()` on random input of shape (32, 14, 168, 99) and scale by 92 batches × 60 epochs | minutes |

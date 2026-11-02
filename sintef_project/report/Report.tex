@@ -742,7 +742,34 @@ folds (stride 3; \texttt{src/predictor\_comparison.py}):
 \item \textbf{LightGBM} --- boosted trees with the submitted model's settings.
 \end{itemize}
 
-% PREDICTOR TABLE
+\begin{table}[H]
+\centering\small
+\begin{tabular}{lrrrr}
+\toprule
+fold & logistic regression & random forest & XGBoost & LightGBM \\
+\midrule
+2020-H1 & 0.9864 & 0.9915 & 0.9922 & 0.9925 \\
+2020-H2 & 0.9776 & 0.9854 & 0.9869 & 0.9866 \\
+2021-H1 & 0.9906 & 0.9939 & 0.9947 & 0.9950 \\
+2021-H2 (test-like) & 0.9810 & 0.9893 & 0.9909 & 0.9914 \\
+2022-H1 & 0.9754 & 0.9835 & 0.9871 & 0.9862 \\
+2022-H2 (test-like) & 0.9885 & 0.9934 & 0.9952 & 0.9953 \\
+\midrule
+mean & 0.9833 & 0.9895 & \textbf{0.9912} & \textbf{0.9912} \\
+test-like mean & 0.9848 & 0.9913 & 0.9930 & \textbf{0.9934} \\
+\bottomrule
+\end{tabular}
+\caption{Four predictor types on the same 61 features and the same walk-forward folds (micro
+ROC-AUC). \texttt{report/runs/predictor\_comparison\_s3.csv}.}
+\label{tab:r-types}
+\end{table}
+
+The ranking is the same on every fold: the linear model below the bagged forest, the forest below
+the two boosted ensembles. XGBoost and LightGBM tie (0.9912 each; 0.9930 and 0.9934 on the test-like
+folds), so the choice of boosting library does not matter; we kept LightGBM, the submitted model.
+More important, every type scores far above Track A's XGBoost on its own engineered features
+(0.9619): even logistic regression on the LP features reaches 0.9833. The gain of Track B is in the
+features the optimiser extracts, not in the learner.
 
 % ---------------------------------------------------------------------------------------------
 \subsection{Every model we trained, helpful or not}
@@ -793,6 +820,7 @@ log & model & protocol & AUC & verdict \\
 037 & \textbf{LightGBM on LP features (submission 2)} & walk-forward & \textbf{0.9912} & selected \\
 037 & LightGBM on LP features, no storage trace / LP only & walk-forward & 0.9910 / 0.9897 & ablation \\
 037 & LightGBM without the LP features & walk-forward & 0.9483 & ablation \\
+B & LP features: logistic regression / random forest / XGBoost & walk-forward & 0.983 / 0.990 / 0.991 & comparison \\
 C & UCNet on the 83 base features & yearly CV & 0.9697 & superseded \\
 C & LightGBM on the 99 base $+$ physics features & yearly CV & 0.9722 & rejected \\
 C & \textbf{UCNet on base $+$ physics features (submission 3)} & yearly CV & \textbf{0.9740} & submitted \\

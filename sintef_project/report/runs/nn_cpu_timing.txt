@@ -1,0 +1,5 @@
+batch 0: 1.78s
+batch 1: 1.54s
+batch 2: 1.46s
+batch 3: 1.25s
+CPU threads 4: 1.25s per batch -> epoch 1.9 min -> 3 seeds x 20 epochs 1.9 h
