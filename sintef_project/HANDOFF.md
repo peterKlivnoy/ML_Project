@@ -52,6 +52,12 @@ From the course's "Project Submission and Grading" PDF:
 
 ## 3. What is left
 
+**Status 2026-11-02, local session: 3.1–3.3 are done.**
+- All placeholders are filled. LP + LightGBM on Track C's folds: 0.9921. Sensitivity: no variant moves the mean by more than 0.0004.
+- Short notebook 2 has been executed on an Apple M4: 32 min of training, correlation 0.9993 with `submission_nn_phys.csv`, which is now in the repo.
+- The report is rebuilt.
+- Left: merge into `main` (3.4, step 1), then the Kaggle selection and Canvas upload.
+
 ### 3.1 Fill the four placeholders in `sintef_project/report/Report.tex`
 
 Search for these markers (three remain). Each needs one small table or paragraph built from a result file in `sintef_project/report/runs/`. If a result file is missing or incomplete, re-run its command; all of them run from `sintef_project/src/`.

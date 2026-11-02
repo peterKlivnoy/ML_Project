@@ -697,7 +697,7 @@ the most test-like year (Section~\ref{sec:eda-shift}).
 \paragraph{Pruning by gain (log 015).} All 299 Track A features were ranked by gain from one fit and
 the feature-set size swept: the top 15 beat the full set (0.8157 vs 0.8144 over four folds, with half
 the fold SD). All 15 survivors are economic quantities; no raw price, storage, inflow or calendar
-column survived. They are the 15 \texttt{PRUNED\_FEATURES} of Short notebook 2.
+column survived. They are the 15 \texttt{PRUNED\_FEATURES} of the Track A notebook.
 
 \begin{table}[H]
 \centering\small
@@ -975,7 +975,34 @@ scores \textbf{0.99013}, far above its cross-validation --- the same direction a
 whose walk-forward estimates also understated their leaderboard scores (the test period is
 post-crisis, the folds are not).
 
-% NN-VS-LP
+\paragraph{The two selected models on the same folds.} Track B's walk-forward and Track C's yearly
+cross-validation use different folds, so their figures are not comparable. We therefore also scored
+LP + LightGBM, with Short notebook 1's settings, on Track C's protocol: the same yearly folds, the same
+7-day gap, and all training cases with no stride (\texttt{src/lp\_yearly\_cv.py}).
+
+\begin{table}[H]
+\centering\small
+\begin{tabular}{lrrr}
+\toprule
+validation year & Track C (network) & Track B (LP + LightGBM) & difference \\
+\midrule
+2019 & 0.9837 & \textbf{0.9927} & $+0.009$ \\
+2020 & 0.9685 & \textbf{0.9905} & $+0.022$ \\
+2021 & 0.9658 & \textbf{0.9939} & $+0.028$ \\
+2022 & 0.9779 & \textbf{0.9914} & $+0.013$ \\
+\midrule
+mean & 0.9740 & \textbf{0.9921} & $+0.018$ \\
+\bottomrule
+\end{tabular}
+\caption{The two selected models on Track C's yearly folds (micro ROC-AUC). Track C's figures are
+from a single seed.}
+\label{tab:r-nn-vs-lp}
+\end{table}
+
+Track B is ahead in every year. Its lead is largest in 2021 ($+0.028$), the year that most resembles
+the test period (Section~\ref{sec:eda-shift}), and its scores vary less across years (0.9905--0.9939, against
+0.9658--0.9837). The public leaderboard points the same way, by a smaller margin (0.99522 against 0.99013),
+which is why Short notebook 1 holds our best score.
 
 % =============================================================================================
 \section{Hyperparameters: how the values in the notebooks were obtained}
@@ -1044,7 +1071,39 @@ seed, threads & 0, 4 & reproducibility; the course's 4-core limit \\
 \caption{Hyperparameters of Short notebook 1.}
 \end{table}
 
-% SENSITIVITY
+\paragraph{Sensitivity, checked after submission.} Because these values were inherited rather than
+tuned, we varied each one around its submitted value, one at a time, on the two test-like
+walk-forward folds (stride 3, as in Table~\ref{tab:r-wf}; \texttt{src/lgbm\_sensitivity.py}):
+
+\begin{table}[H]
+\centering\small
+\begin{tabular}{lrrrr}
+\toprule
+variant & 2021-H2 & 2022-H2 & mean & vs.\ submitted \\
+\midrule
+\textbf{submitted} & 0.9914 & 0.9955 & \textbf{0.9935} & --- \\
+\texttt{num\_leaves} 31 & 0.9912 & 0.9951 & 0.9932 & $-0.00029$ \\
+\texttt{num\_leaves} 255 & 0.9915 & 0.9954 & 0.9934 & $-0.00001$ \\
+\texttt{min\_data\_in\_leaf} 100 & 0.9910 & 0.9956 & 0.9933 & $-0.00017$ \\
+\texttt{min\_data\_in\_leaf} 2000 & 0.9914 & 0.9953 & 0.9933 & $-0.00012$ \\
+learning rate 0.1, 300 rounds & 0.9909 & 0.9953 & 0.9931 & $-0.00035$ \\
+learning rate 0.025, 1{,}200 rounds & 0.9916 & 0.9954 & 0.9935 & $+0.00004$ \\
+\texttt{feature\_fraction} 0.5 & 0.9917 & 0.9953 & 0.9935 & $+0.00005$ \\
+\texttt{feature\_fraction} 1.0 & 0.9910 & 0.9953 & 0.9931 & $-0.00032$ \\
+\bottomrule
+\end{tabular}
+\caption{One-at-a-time sensitivity of Short notebook 1's LightGBM settings (micro ROC-AUC). This run
+was on a different machine from Table~\ref{tab:r-wf}, which is why the submitted settings score
+0.9955 rather than 0.9953 on 2022-H2.}
+\label{tab:r-lgbm-sens}
+\end{table}
+
+No change moves the mean by more than 0.0004. Two variants score above the submitted settings,
+\texttt{feature\_fraction} 0.5 and the slower learning rate, both by less than 0.0001 and on only one
+of the two folds (2021-H2). The submitted model is therefore not sitting on a sharp optimum that it happened to
+inherit from Track A: within this range, LightGBM's settings hardly matter, and the score comes from
+the LP features (Section~\ref{sec:fe-select}). We did not change the submitted model after seeing these
+results.
 
 \subsection{Short notebook 2: UCNet (Track C)}
 
@@ -1217,9 +1276,9 @@ model & LightGBM on LP features (Track B) & sequence neural network (Track C) \\
 Kaggle public score & \kagglelp{} & 0.99013 \\
 validation & walk-forward 0.9912 (6 half-year folds) & yearly CV 0.9740 (2019--2022) \\
 trains on & all 2{,}922 labelled cases & all 2{,}922 labelled cases, 3 seeds \\
-runtime, 4 CPU cores & $\sim$2\,h (3{,}647 LPs) $+$ 6\,min & $\sim$2\,h (1.9\,min per epoch); $\sim$40\,min on an Apple M-series GPU \\
+runtime, 4 CPU cores & $\sim$2\,h (3{,}647 LPs) $+$ 6\,min & $\sim$2\,h (1.9\,min per epoch); 32\,min measured on an Apple M4 GPU \\
 peak memory & $\sim$5\,GB & $\sim$8\,GB \\
-reproduces the uploaded file & to $2\cdot 10^{-13}$ & features exactly; training not bit-reproducible on a GPU \\
+reproduces the uploaded file & to $2\cdot 10^{-13}$ & features exactly; re-run correlates 0.9993 with it (training is not bit-reproducible on a GPU) \\
 \bottomrule
 \end{tabularx}
 \caption{The two predictions selected on Kaggle. Both notebooks start from the raw data, run
@@ -1275,7 +1334,12 @@ taken to its conclusion.
   on all labelled cases. Its 99 features match the original run's checksums (mean and SD of every
   feature on train and test) to the printed precision. Training on a GPU is not bit-reproducible
   across machines, so a re-run gives a prediction close to, not identical with, the uploaded file;
-  the notebook's last cell measures the difference when that file is present. The notebook uses CUDA,
+  the notebook's last cell measures the difference when that file is present. Executed end to end on
+  an Apple M4 GPU (MPS), it built the features in 16\,s and trained the three seeds in 32\,min (27--54\,s
+  per epoch); its output correlates 0.9993 with the uploaded file, 99.4\% of cells fall on the same side
+  of 0.5, and the largest single difference is 0.33. The total of 84\,min printed in the executed
+  notebook includes about 52\,min during which the machine was asleep, visible as three slow epochs of
+  seed~1. The notebook uses CUDA,
   then Apple MPS, then the CPU; no GPU is needed: on 4 CPU cores training takes about 2\,h (1.9\,min
   per epoch for 3 seeds $\times$ 20 epochs).
 \item \textbf{Track A notebook} (\texttt{notebooks/Track A XGBoost (0.98058).ipynb}, not selected):
