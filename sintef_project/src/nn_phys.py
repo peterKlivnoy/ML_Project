@@ -1,7 +1,7 @@
 """Track C: a sequence neural network (UCNet) on 83 base + 16 closed-form physics features.
 
-Rebuilt from Anders Bærheim's specification (reproduce_submission_nn_phys.md; Kaggle public
-0.99013, yearly CV 0.9740). No optimisation solver, no LightGBM, no blending.
+Rebuilt from Anders Bærheim's specification (report/track_c_specification.md). Selected run: Kaggle
+public 0.99024. No optimisation solver, no LightGBM, no blending.
 
     python nn_phys.py features        # build X4 (n_cases, 14, 168, 99), print checksums
     python nn_phys.py cv [year ...]   # expanding-window CV, one seed

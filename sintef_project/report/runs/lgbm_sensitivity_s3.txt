@@ -1,4 +1,29 @@
-  2021-07  submitted                          micro 0.9914  (76s)
-  2021-07  num_leaves 31                      micro 0.9914  (49s)
-  2021-07  num_leaves 255                     micro 0.9913  (98s)
-  2021-07  min_data_in_leaf 100               micro 0.9912  (70s)
+  2021-07  submitted                          micro 0.9914  (44s)
+  2021-07  num_leaves 31                      micro 0.9912  (32s)
+  2021-07  num_leaves 255                     micro 0.9915  (66s)
+  2021-07  min_data_in_leaf 100               micro 0.9910  (48s)
+  2021-07  min_data_in_leaf 2000              micro 0.9914  (55s)
+  2021-07  learning rate 0.1, 300 rounds      micro 0.9909  (28s)
+  2021-07  learning rate 0.025, 1200 rounds   micro 0.9916  (103s)
+  2021-07  feature_fraction 0.5               micro 0.9917  (32s)
+  2021-07  feature_fraction 1.0               micro 0.9910  (31s)
+  2022-07  submitted                          micro 0.9955  (34s)
+  2022-07  num_leaves 31                      micro 0.9951  (24s)
+  2022-07  num_leaves 255                     micro 0.9954  (45s)
+  2022-07  min_data_in_leaf 100               micro 0.9956  (34s)
+  2022-07  min_data_in_leaf 2000              micro 0.9953  (38s)
+  2022-07  learning rate 0.1, 300 rounds      micro 0.9953  (18s)
+  2022-07  learning rate 0.025, 1200 rounds   micro 0.9954  (71s)
+  2022-07  feature_fraction 0.5               micro 0.9953  (53s)
+  2022-07  feature_fraction 1.0               micro 0.9953  (79s)
+fold                              2021-07  2022-07    mean
+variant                                                   
+submitted                          0.9914   0.9955  0.9935
+num_leaves 31                      0.9912   0.9951  0.9932
+num_leaves 255                     0.9915   0.9954  0.9934
+min_data_in_leaf 100               0.9910   0.9956  0.9933
+min_data_in_leaf 2000              0.9914   0.9953  0.9933
+learning rate 0.1, 300 rounds      0.9909   0.9953  0.9931
+learning rate 0.025, 1200 rounds   0.9916   0.9954  0.9935
+feature_fraction 0.5               0.9917   0.9953  0.9935
+feature_fraction 1.0               0.9910   0.9953  0.9931
