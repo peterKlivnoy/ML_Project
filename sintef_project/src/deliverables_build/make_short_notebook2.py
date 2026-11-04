@@ -1,7 +1,6 @@
 """Generate `Short notebook 2.ipynb`: the sequence neural network (UCNet) submission, self-contained.
 
-The model was built by Anders Bærheim (Kaggle public 0.99013); src/nn_phys.py is a rebuild from
-his specification whose 99 features match his reference checksums. The notebook is that module's
+The model was built by Anders Bærheim; src/nn_phys.py is a rebuild from his specification whose 99 features match his reference checksums. The notebook is that module's
 definitions, lifted by AST, plus the cells that run them.
 
     python src/deliverables_build/make_short_notebook2.py
@@ -45,7 +44,7 @@ def join(*names):
 
 md, code = nbf.v4.new_markdown_cell, nbf.v4.new_code_cell
 cells = [
-    md("""# Short notebook 2 — sequence neural network on closed-form physics features (Kaggle public 0.99013)
+    md("""# Short notebook 2 — sequence neural network on closed-form physics features (Kaggle public 0.99024)
 
 """ + HEADER + """
 
@@ -63,10 +62,13 @@ built by Anders Bærheim (Track C in the report):
    the three seeds' probabilities, with no post-processing.
 
 **Hardware.** No GPU is needed: on 4 CPU cores training takes about 2 hours (1.9 minutes per epoch,
-3 seeds × 20 epochs). The original run used an Apple M-series GPU (PyTorch, MPS backend), about 40
-minutes; the notebook uses CUDA if available, then MPS, then the CPU. Training is not
-bit-reproducible across devices, so a re-run lands near 0.990 rather than exactly on 0.99013. The
-features are deterministic: Section 3 checks them against values recorded from the original run.
+3 seeds × 20 epochs). The selected prediction is the output saved in this notebook, from a run on an
+Apple M4 GPU (PyTorch 2.15, MPS backend) with 32 minutes of training. The saved total of 84 minutes
+includes about 52 minutes when the laptop was asleep (seed 1, epochs 2–4). The notebook uses CUDA if
+available, then MPS, then the CPU. Training is not bit-reproducible, so a re-run lands close to the
+selected prediction rather than exactly on it: two independent runs of this model correlate 0.9993,
+which is what the last cell shows against an earlier upload. The features are deterministic:
+Section 3 checks them against values recorded from the original run.
 
 **Memory:** the feature tensor is 3,647 × 14 × 168 × 99 float32 ≈ 3.4 GB; peak about 8 GB.
 

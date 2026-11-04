@@ -24,7 +24,7 @@ again at the end.
   | | model | file | public score |
   |---|---|---|---|
   | Short notebook 1 | LP + LightGBM (Track B) | `sintef_project/submission_physics.csv` | **0.99522** (best) |
-  | Short notebook 2 | UCNet neural network (Track C, Anders) | `submission_nn_phys.csv` (Anders has it; not in the repo) | 0.99013 |
+  | Short notebook 2 | UCNet neural network (Track C, Anders) | `sintef_project/submission_nn.csv`, the saved run of the notebook | 0.99024 |
 
 - **Three tracks**, all in the report:
   - **A:** XGBoost feature engineering, public 0.98058, *not selected*. Its notebook is in `sintef_project/notebooks/`.
@@ -54,7 +54,8 @@ From the course's "Project Submission and Grading" PDF:
 
 **Status 2026-11-02, local session: 3.1–3.3 are done.**
 - All placeholders are filled. LP + LightGBM on Track C's folds: 0.9921. Sensitivity: no variant moves the mean by more than 0.0004.
-- Short notebook 2 has been executed on an Apple M4: 32 min of training, correlation 0.9993 with `submission_nn_phys.csv`, which is now in the repo.
+- Short notebook 2 has been executed on an Apple M4: 32 min of training. Its output `submission_nn.csv` scored 0.99024 and is the selected file; it correlates 0.9993 with Anders's earlier upload `submission_nn_phys.csv`.
+- The lab log is out of the report (the files stay in `report/log/`). Track C's CV figures stay from Anders's original run and are labelled so in the report.
 - The report is rebuilt.
 - Left: merge into `main` (3.4, step 1), then the Kaggle selection and Canvas upload.
 
@@ -105,7 +106,7 @@ cd ../.. && python sintef_project/src/deliverables_build/flatten_report.py   # s
 ### 3.4 Merge and submit
 
 1. Commit everything, push the branch, open a PR into `main` and merge it, as with PR #2.
-2. **Kaggle:** select `submission_physics.csv` (0.99522) and `submission_nn_phys.csv` (0.99013). Check the team name is exactly `[300]`.
+2. **Kaggle:** select `submission_physics.csv` (0.99522) and `submission_nn.csv` (0.99024). Check the team name is exactly `[300]`.
 3. **Canvas** (before Nov 8, 22:00), all from `sintef_project/deliverables/`: `Short notebook 1.ipynb`, `Short notebook 2.ipynb`, `Report.pdf`, `requirements.txt`. Register for the exam.
 
 ---
