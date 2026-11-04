@@ -129,7 +129,7 @@ cd ../.. && python sintef_project/src/deliverables_build/flatten_report.py   # s
   - yearly CV: 2019 0.9837, 2020 0.9685, 2021 0.9658, 2022 0.9779, mean 0.9740;
   - without the physics features 0.9697; LightGBM on the same 99 features 0.9722.
 - **Track C hyperparameters:** Anders set them by hand; no record of a search exists. The report says exactly that and gives the reasoning each value follows. Don't invent a tuning procedure.
-- **Report structure:** a lookup table of graded items, then:
+- **Report structure:**
   1. Task & data
   2. EDA (six subsections named after the course list, plus train/test shift)
   3. Validation
@@ -139,7 +139,7 @@ cd ../.. && python sintef_project/src/deliverables_build/flatten_report.py   # s
   7. Interpretation
   8. Selected predictions
   9. Discussion
-  - Appendix A Reproducibility; Appendix B full lab log.
+  - Appendix A Reproducibility.
 
 ## 5. Where things are
 
